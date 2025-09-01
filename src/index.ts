@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -15,9 +16,6 @@ const env = validateEnv()
 const fastify = Fastify({
   logger: {
     level: env.NODE_ENV === 'development' ? 'info' : 'warn',
-    transport: env.NODE_ENV === 'development' 
-      ? { target: 'pino-pretty' }
-      : undefined,
   },
 })
 
@@ -82,7 +80,7 @@ fastify.setErrorHandler((error, request, reply) => {
 })
 
 // Not found handler
-fastify.setNotFoundHandler((request, reply) => {
+fastify.setNotFoundHandler((_request, reply) => {
   reply.status(404).send({
     success: false,
     error: 'Route not found',

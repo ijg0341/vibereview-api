@@ -4,9 +4,9 @@ import { getSupabase } from '../utils/supabase.js'
 export interface AuthenticatedRequest extends FastifyRequest {
   user: {
     id: string
-    email?: string
-    team_id?: string
-    role?: string
+    email: string | undefined
+    team_id: string | undefined
+    role: string | undefined
   }
 }
 
@@ -38,9 +38,9 @@ export async function authMiddleware(
     // Get user profile with team information
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('*')
+      .select('team_id, role')
       .eq('id', user.id)
-      .single()
+      .maybeSingle() as { data: { team_id: string | null; role: 'admin' | 'member' } | null; error: any }
 
     if (profileError) {
       return reply.status(500).send({
@@ -52,7 +52,7 @@ export async function authMiddleware(
     // Attach user info to request
     ;(request as AuthenticatedRequest).user = {
       id: user.id,
-      email: user.email,
+      email: user.email || undefined,
       team_id: profile?.team_id || undefined,
       role: profile?.role || undefined,
     }

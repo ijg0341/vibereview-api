@@ -1,5 +1,4 @@
 import crypto from 'crypto'
-import mimeTypes from 'mime-types'
 import type { MultipartFile } from '@fastify/multipart'
 
 export interface FileValidationOptions {

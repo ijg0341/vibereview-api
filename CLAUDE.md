@@ -34,15 +34,18 @@ Fastify 기반 파일 업로드 및 메타데이터 API 서버
 
 ### 🔧 개발 환경 및 설정
 
-#### 1. 환경 변수 및 설정 개선
-- [ ] 환경별 설정 파일 분리 (dev, staging, prod)
+#### 1. Supabase 설정 (Dashboard 방식)
+- [ ] Supabase 프로젝트 생성 및 데이터베이스 설정
+- [ ] 환경 변수 설정 (URL, Keys)
+- [ ] 데이터베이스 스키마 생성 (테이블, RLS 정책)
+- [ ] Storage 버킷 생성 및 권한 설정
+- [ ] 실제 타입 생성 후 `database.ts` 업데이트
+
+#### 2. 환경 변수 및 설정 개선
+- [ ] 환경별 설정 파일 분리 (dev, prod)
 - [ ] 더 상세한 환경 변수 검증
 - [ ] Docker 컨테이너 설정
 - [ ] Health check 엔드포인트 개선 (DB 연결 상태 포함)
-
-#### 2. 데이터베이스 타입 생성
-- [ ] Supabase에서 실제 타입 생성 후 `database.ts` 업데이트
-- [ ] 타입 안정성 개선
 
 ### 🛠 기능 개선 및 확장
 
@@ -149,6 +152,26 @@ Fastify 기반 파일 업로드 및 메타데이터 API 서버
 - [ ] 데이터베이스 백업 자동화
 - [ ] 로그 로테이션 설정
 - [ ] 보안 패치 자동화
+
+## Supabase 설정 (Dashboard 방식)
+
+### 1. 프로젝트 생성
+1. [Supabase Dashboard](https://supabase.com/dashboard) 접속
+2. 새 프로젝트 생성 (Organization: vibereview)
+3. 프로젝트명: `vibereview-api`
+4. Database 비밀번호 설정 및 저장
+
+### 2. 환경 변수 확인
+프로젝트 생성 후 Settings > API에서 다음 정보 확인:
+- `SUPABASE_URL`: Project URL
+- `SUPABASE_ANON_KEY`: anon/public key  
+- `SUPABASE_SERVICE_KEY`: service_role key (서버용)
+
+### 3. 필수 설정 작업
+- **데이터베이스 스키마**: 테이블 및 RLS 정책 생성
+- **Storage 버킷**: `session-files` 버킷 생성 및 권한 설정
+- **Authentication**: 사용자 가입/로그인 설정
+- **타입 생성**: SQL Editor에서 스키마 확인 후 TypeScript 타입 생성
 
 ## 개발 명령어
 

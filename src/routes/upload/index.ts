@@ -7,7 +7,6 @@ import {
   parseToolName, 
   FileValidationError 
 } from '../../utils/file-validation.js'
-import { uploadMetadataSchema } from '../../types/api.js'
 import { z } from 'zod'
 
 const uploadRequestSchema = z.object({
@@ -45,10 +44,15 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       // Parse additional fields from form data
       const fields = data.fields
+      const getFieldValue = (field: any) => {
+        if (!field) return undefined
+        return typeof field === 'object' && 'value' in field ? field.value : field
+      }
+      
       const formData = {
-        tool_name: fields.tool_name?.value as string,
-        session_date: fields.session_date?.value as string,
-        metadata: fields.metadata?.value as string,
+        tool_name: getFieldValue(fields.tool_name) as string,
+        session_date: getFieldValue(fields.session_date) as string,
+        metadata: getFieldValue(fields.metadata) as string,
       }
 
       // Validate form data
@@ -76,7 +80,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
         .select('id, original_filename, storage_path, upload_status')
         .eq('team_id', user.team_id!)
         .eq('file_hash', validatedFile.hash)
-        .single()
+        .maybeSingle() as { data: any }
 
       let storagePath: string
       let shouldUploadToStorage = true
@@ -99,7 +103,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       // Upload to Supabase Storage (only if not duplicate)
       if (shouldUploadToStorage) {
-        const { data: storageData, error: storageError } = await supabase.storage
+        const { error: storageError } = await supabase.storage
           .from('session-files')
           .upload(storagePath, validatedFile.buffer, {
             contentType: validatedFile.mimetype,
@@ -123,20 +127,20 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       if (existingFile) {
         // Update existing file metadata (upsert behavior)
-        const { data: updateData, error: dbError } = await supabase
+        const { data: updateData, error: dbError } = await (supabase as any)
           .from('uploaded_files')
           .update({
             original_filename: validatedFile.filename,
             user_id: user.id, // Update uploader
             tool_name: toolName,
             session_date: parsedFields.session_date,
-            upload_status: 'uploaded',
+            upload_status: 'uploaded' as const,
             metadata: parsedFields.metadata,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existingFile.id)
           .select()
-          .single()
+          .single() as { data: any; error: any }
 
         if (dbError) {
           request.log.error(dbError, 'Failed to update file metadata')
@@ -151,7 +155,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       } else {
         // Insert new file metadata
-        const { data: insertData, error: dbError } = await supabase
+        const { data: insertData, error: dbError } = await (supabase as any)
           .from('uploaded_files')
           .insert({
             team_id: user.team_id!,
@@ -163,11 +167,11 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
             file_hash: validatedFile.hash,
             tool_name: toolName,
             session_date: parsedFields.session_date,
-            upload_status: 'uploaded',
+            upload_status: 'uploaded' as const,
             metadata: parsedFields.metadata,
           })
           .select()
-          .single()
+          .single() as { data: any; error: any }
 
         if (dbError) {
           request.log.error(dbError, 'Failed to save file metadata')
@@ -236,7 +240,6 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
   // Batch upload endpoint (for multiple files)
   fastify.post('/batch', async function (request: FastifyRequest, reply) {
     try {
-      const user = (request as AuthenticatedRequest).user
       const files = request.files()
       const results = []
       const errors = []
@@ -300,7 +303,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
         .select('id, original_filename, upload_status, processing_error, created_at')
         .eq('id', fileId)
         .eq('team_id', user.team_id!)
-        .single()
+        .maybeSingle() as { data: any; error: any }
 
       if (error || !data) {
         return reply.status(404).send({

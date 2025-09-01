@@ -119,7 +119,7 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
         .select('*')
         .eq('id', fileId)
         .eq('team_id', user.team_id!)
-        .single()
+        .maybeSingle() as { data: any; error: any }
 
       if (error || !data) {
         return reply.status(404).send({
@@ -156,7 +156,7 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
         .eq('id', fileId)
         .eq('team_id', user.team_id!)
         .eq('user_id', user.id) // Users can only delete their own files
-        .single()
+        .maybeSingle() as { data: any; error: any }
 
       if (fetchError || !fileData) {
         return reply.status(404).send({
@@ -212,7 +212,7 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
       const { data: stats, error } = await supabase
         .from('uploaded_files')
         .select('upload_status, tool_name, file_size')
-        .eq('team_id', user.team_id!)
+        .eq('team_id', user.team_id!) as { data: any; error: any }
 
       if (error) {
         request.log.error(error, 'Failed to fetch stats')
@@ -224,14 +224,15 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
 
       // Calculate statistics
       const totalFiles = stats.length
-      const totalSize = stats.reduce((sum, file) => sum + file.file_size, 0)
+      const totalSize = stats.reduce((sum: number, file: any) => sum + (file.file_size || 0), 0)
       
-      const statusCounts = stats.reduce((acc, file) => {
-        acc[file.upload_status] = (acc[file.upload_status] || 0) + 1
+      const statusCounts = stats.reduce((acc: Record<string, number>, file: any) => {
+        const status = file.upload_status || 'unknown'
+        acc[status] = (acc[status] || 0) + 1
         return acc
       }, {} as Record<string, number>)
 
-      const toolCounts = stats.reduce((acc, file) => {
+      const toolCounts = stats.reduce((acc: Record<string, number>, file: any) => {
         if (file.tool_name) {
           acc[file.tool_name] = (acc[file.tool_name] || 0) + 1
         }
@@ -271,7 +272,7 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
         .select('storage_path, original_filename, mime_type')
         .eq('id', fileId)
         .eq('team_id', user.team_id!)
-        .single()
+        .maybeSingle() as { data: any; error: any }
 
       if (fetchError || !fileData) {
         return reply.status(404).send({
