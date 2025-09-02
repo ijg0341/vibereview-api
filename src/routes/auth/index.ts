@@ -84,8 +84,20 @@ export default async function authRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          user: data.user || {},
-          session: data.session || {},
+          user: {
+            id: data.user?.id,
+            email: data.user?.email,
+            created_at: data.user?.created_at,
+            email_confirmed_at: data.user?.email_confirmed_at,
+            user_metadata: data.user?.user_metadata,
+          },
+          session: {
+            access_token: data.session?.access_token,
+            refresh_token: data.session?.refresh_token,
+            expires_in: data.session?.expires_in,
+            token_type: data.session?.token_type,
+            user: data.session?.user,
+          },
           access_token: data.session?.access_token,
           refresh_token: data.session?.refresh_token,
         }
@@ -167,8 +179,20 @@ export default async function authRoutes(fastify: FastifyInstance) {
         success: true,
         message: 'User created successfully. Account is ready to use.',
         data: {
-          user: data.user,
-          session: data.session,
+          user: {
+            id: data.user?.id,
+            email: data.user?.email,
+            created_at: data.user?.created_at,
+            email_confirmed_at: data.user?.email_confirmed_at,
+            user_metadata: data.user?.user_metadata,
+          },
+          session: {
+            access_token: data.session?.access_token,
+            refresh_token: data.session?.refresh_token,
+            expires_in: data.session?.expires_in,
+            token_type: data.session?.token_type,
+            user: data.session?.user,
+          },
           access_token: data.session?.access_token,
           refresh_token: data.session?.refresh_token,
         }
