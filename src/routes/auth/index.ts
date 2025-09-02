@@ -139,7 +139,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
         email,
         password,
         options: {
-          emailRedirectTo: undefined,
           data: {
             full_name: full_name || null,
           }
