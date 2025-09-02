@@ -28,7 +28,58 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', requireTeam())
 
   // Upload single file
-  fastify.post('/file', async function (request: FastifyRequest, reply) {
+  fastify.post('/file', {
+    schema: {
+      tags: ['Upload'],
+      summary: '단일 파일 업로드',
+      description: 'AI 도구 세션 파일을 업로드합니다. 중복 파일은 메타데이터만 업데이트됩니다',
+      security: [{ bearerAuth: [] }],
+      consumes: ['multipart/form-data'],
+      body: {
+        type: 'object',
+        properties: {
+          file: { 
+            type: 'string', 
+            format: 'binary',
+            description: '업로드할 세션 파일 (.json, .jsonl, .csv, .txt)'
+          },
+          tool_name: { 
+            type: 'string', 
+            description: 'AI 도구 이름 (선택사항, 자동 감지됨)' 
+          },
+          session_date: { 
+            type: 'string', 
+            format: 'date',
+            description: '세션 날짜 (선택사항)' 
+          },
+          metadata: { 
+            type: 'string', 
+            description: '추가 메타데이터 (JSON 문자열)' 
+          }
+        }
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: {
+              type: 'object',
+              properties: {
+                file_id: { type: 'string', description: '파일 ID' },
+                filename: { type: 'string', description: '파일명' },
+                size: { type: 'number', description: '파일 크기 (bytes)' },
+                upload_status: { type: 'string', description: '업로드 상태' },
+                tool_name: { type: 'string', description: '감지된 AI 도구명' },
+                is_duplicate: { type: 'boolean', description: '중복 파일 여부' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -240,7 +291,24 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
   })
 
   // Batch upload endpoint (for multiple files)
-  fastify.post('/batch', async function (request: FastifyRequest, reply) {
+  fastify.post('/batch', {
+    schema: {
+      tags: ['Upload'],
+      summary: '배치 파일 업로드',
+      description: '여러 파일을 한 번에 업로드합니다 (현재 구현 중)',
+      security: [{ bearerAuth: [] }],
+      consumes: ['multipart/form-data'],
+      response: {
+        501: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string', description: '구현 예정 메시지' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const files = request.files()
       const results = []
@@ -294,7 +362,43 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
   })
 
   // Get upload status
-  fastify.get('/status/:fileId', async function (request: FastifyRequest, reply) {
+  fastify.get('/status/:fileId', {
+    schema: {
+      tags: ['Upload'],
+      summary: '업로드 상태 확인',
+      description: '파일 업로드 및 처리 상태를 확인합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          fileId: { type: 'string', description: '파일 ID (UUID)' }
+        },
+        required: ['fileId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: '파일 ID' },
+                original_filename: { type: 'string', description: '파일명' },
+                upload_status: { 
+                  type: 'string', 
+                  enum: ['uploaded', 'processing', 'processed', 'failed'],
+                  description: '업로드 상태' 
+                },
+                processing_error: { type: 'string', description: '처리 에러 (있는 경우)' },
+                created_at: { type: 'string', description: '업로드 일시' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { fileId } = request.params as { fileId: string }

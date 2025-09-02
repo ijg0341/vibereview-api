@@ -21,7 +21,39 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authMiddleware)
 
   // GET /users/profile - 내 프로필 조회
-  fastify.get('/profile', async function (request: FastifyRequest, reply) {
+  fastify.get('/profile', {
+    schema: {
+      tags: ['Users'],
+      summary: '내 프로필 조회',
+      description: '현재 로그인한 사용자의 프로필 정보를 조회합니다',
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: '사용자 ID' },
+                email: { type: 'string', description: '이메일' },
+                profile: {
+                  type: 'object',
+                  properties: {
+                    full_name: { type: 'string', description: '이름' },
+                    username: { type: 'string', description: '사용자명' },
+                    avatar_url: { type: 'string', description: '프로필 이미지 URL' },
+                    role: { type: 'string', enum: ['admin', 'member'], description: '역할' },
+                    team_id: { type: 'string', description: '팀 ID' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -68,7 +100,32 @@ export default async function userRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /users/profile - 프로필 수정
-  fastify.put('/profile', async function (request: FastifyRequest, reply) {
+  fastify.put('/profile', {
+    schema: {
+      tags: ['Users'],
+      summary: '프로필 수정',
+      description: '사용자 프로필 정보를 수정합니다',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          full_name: { type: 'string', description: '이름' },
+          username: { type: 'string', description: '사용자명' },
+          avatar_url: { type: 'string', format: 'uri', description: '프로필 이미지 URL' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: { type: 'object', description: '업데이트된 프로필 정보' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const updates = updateProfileSchema.parse(request.body)
@@ -141,7 +198,33 @@ export default async function userRoutes(fastify: FastifyInstance) {
   })
 
   // GET /users/settings - 사용자 설정 조회
-  fastify.get('/settings', async function (request: FastifyRequest, reply) {
+  fastify.get('/settings', {
+    schema: {
+      tags: ['Users'],
+      summary: '사용자 설정 조회',
+      description: '사용자의 개인 설정을 조회합니다',
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                language: { type: 'string', description: '언어 설정' },
+                work_directory: { type: 'string', description: '작업 디렉토리' },
+                notifications_enabled: { type: 'boolean', description: '알림 설정' },
+                timezone: { type: 'string', description: '시간대' },
+                theme: { type: 'string', description: '테마 설정' },
+                file_auto_detection: { type: 'boolean', description: '파일 자동 감지' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -172,7 +255,33 @@ export default async function userRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /users/settings - 사용자 설정 변경
-  fastify.put('/settings', async function (request: FastifyRequest, reply) {
+  fastify.put('/settings', {
+    schema: {
+      tags: ['Users'],
+      summary: '사용자 설정 변경',
+      description: '사용자의 개인 설정을 변경합니다',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          language: { type: 'string', description: '언어 설정 (ko, en)' },
+          work_directory: { type: 'string', description: '작업 디렉토리 경로' },
+          notifications_enabled: { type: 'boolean', description: '알림 활성화' },
+          timezone: { type: 'string', description: '시간대 (예: Asia/Seoul)' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: { type: 'object', description: '업데이트된 설정' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const settings = updateSettingsSchema.parse(request.body)

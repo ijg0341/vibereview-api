@@ -10,11 +10,21 @@ Fastify 기반 파일 업로드 및 메타데이터 API 서버
 
 ### ✅ 완료된 기능
 - [x] Fastify + TypeScript 기본 설정
-- [x] Supabase 클라이언트 연동
+- [x] Supabase 클라이언트 연동 및 데이터베이스 스키마 생성
 - [x] JWT 기반 인증 미들웨어
+- [x] 인증 API (`/api/auth/`)
+  - [x] 로그인/회원가입/로그아웃
+  - [x] 세션 확인
+- [x] 사용자 관리 API (`/api/users/`)
+  - [x] 프로필 조회/수정
+  - [x] 설정 조회/변경
+- [x] 프로젝트 관리 API (`/api/projects/`)
+  - [x] 프로젝트 목록/상세/생성/수정/삭제
+  - [x] 프로젝트 세션 목록
+  - [x] 자동 프로젝트 생성
 - [x] 파일 업로드 API (`/api/upload/`)
   - [x] 단일 파일 업로드 (중복 파일 upsert 지원)
-  - [x] 배치 파일 업로드
+  - [x] 배치 파일 업로드 (기본 구조)
   - [x] 업로드 상태 확인
 - [x] 메타데이터 API (`/api/metadata/`)
   - [x] 파일 목록 조회 (페이지네이션, 필터링)
@@ -22,11 +32,19 @@ Fastify 기반 파일 업로드 및 메타데이터 API 서버
   - [x] 파일 삭제
   - [x] 팀 통계
   - [x] 파일 다운로드
+- [x] 통계 및 대시보드 API (`/api/stats/`)
+  - [x] 메인 대시보드 통계
+  - [x] 프로젝트별 통계
+  - [x] 사용자별 통계
 - [x] 파일 검증 및 보안
   - [x] MIME 타입 검증
   - [x] 파일 크기 제한
   - [x] 악성 콘텐츠 스캔
   - [x] 파일 해시 기반 중복 제거
+- [x] API 문서화 및 테스트 도구
+  - [x] Swagger UI 완전 구현 (/docs)
+  - [x] 커스텀 테스트 페이지 (/test/)
+  - [x] Postman 컬렉션
 - [x] 에러 핸들링 및 로깅
 - [x] CORS, 헬멧, 레이트 리미팅
 
@@ -129,10 +147,12 @@ Fastify 기반 파일 업로드 및 메타데이터 API 서버
 ### 📋 API 문서 및 도구
 
 #### 15. API 문서화
+- [x] Swagger UI 완전 구현 (http://localhost:3001/docs)
+- [x] 모든 API 엔드포인트 상세 문서화 및 스키마 정의
+- [x] 카테고리별 분류 (Auth, Users, Projects, Upload, Metadata, Stats)
 - [x] 커스텀 테스트 페이지 구현 (http://localhost:3001/test/)
 - [x] 파일 업로드 최적화 테스트 UI (드래그앤드롭, JWT 관리)
 - [x] Postman 컬렉션 생성
-- [ ] OpenAPI (Swagger) 스펙 작성 (선택사항)
 - [ ] SDK 생성 (클라이언트 라이브러리)
 
 #### 16. 개발 도구
@@ -221,21 +241,48 @@ RATE_LIMIT_MAX=100
 RATE_LIMIT_WINDOW=900000
 ```
 
-## API 엔드포인트
+## API 엔드포인트 (총 25개)
 
-### 업로드 API
+### 🔐 인증 API (5개)
+- `POST /api/auth/login` - 로그인
+- `POST /api/auth/signup` - 회원가입  
+- `POST /api/auth/logout` - 로그아웃
+- `GET /api/auth/session` - 세션 확인
+- `POST /api/auth/callback` - OAuth 콜백
+
+### 👤 사용자 관리 API (4개)
+- `GET /api/users/profile` - 프로필 조회
+- `PUT /api/users/profile` - 프로필 수정
+- `GET /api/users/settings` - 설정 조회
+- `PUT /api/users/settings` - 설정 변경
+
+### 📁 프로젝트 관리 API (6개)
+- `GET /api/projects` - 프로젝트 목록
+- `POST /api/projects` - 프로젝트 생성
+- `GET /api/projects/{id}` - 프로젝트 상세
+- `PUT /api/projects/{id}` - 프로젝트 수정
+- `DELETE /api/projects/{id}` - 프로젝트 삭제
+- `GET /api/projects/{id}/sessions` - 세션 목록
+- `POST /api/projects/find-or-create` - 자동 생성
+
+### 📤 업로드 API (3개)
 - `POST /api/upload/file` - 단일 파일 업로드
 - `POST /api/upload/batch` - 배치 파일 업로드
 - `GET /api/upload/status/:fileId` - 업로드 상태 확인
 
-### 메타데이터 API
+### 📋 메타데이터 API (5개)
 - `GET /api/metadata/files` - 파일 목록 조회
 - `GET /api/metadata/files/:fileId` - 파일 상세 정보
 - `DELETE /api/metadata/files/:fileId` - 파일 삭제
 - `GET /api/metadata/stats` - 팀 통계
 - `GET /api/metadata/files/:fileId/download` - 파일 다운로드
 
-### 헬스체크
+### 📊 통계 API (3개)
+- `GET /api/stats/dashboard` - 대시보드 통계
+- `GET /api/stats/projects/{id}` - 프로젝트별 통계
+- `GET /api/stats/users/{id}` - 사용자별 통계
+
+### ⚡ 시스템 API (1개)
 - `GET /health` - 서버 상태 확인
 
 ## 파일 구조
@@ -262,9 +309,9 @@ src/
 ## 우선순위
 
 ### High Priority (즉시 필요)
-1. **테스트 코드 작성** - 안정성 확보 (Vitest)
-2. **배치 업로드 완성** - 현재 구현 미완성
-3. **환경 변수 설정 개선** - 프로덕션 배포 준비
+1. **프로덕션 배포** - Railway/Vercel 등 클라우드 배포
+2. **배치 업로드 완성** - 현재 기본 구조만 구현
+3. **테스트 코드 작성** - 안정성 확보 (Vitest)
 4. **ESLint/Prettier 설정** - 코드 품질 도구
 
 ### Medium Priority (단기)

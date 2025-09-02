@@ -8,7 +8,78 @@ export default async function statsRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', requireTeam())
 
   // GET /stats/dashboard - 메인 대시보드 통계
-  fastify.get('/dashboard', async function (request: FastifyRequest, reply) {
+  fastify.get('/dashboard', {
+    schema: {
+      tags: ['Stats'],
+      summary: '대시보드 통계',
+      description: '팀의 전체 통계를 조회합니다. 프로젝트 수, 파일 수, 도구별 사용량 등을 포함합니다',
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                overview: {
+                  type: 'object',
+                  properties: {
+                    total_projects: { type: 'number', description: '총 프로젝트 수' },
+                    total_files: { type: 'number', description: '총 파일 수' },
+                    total_size: { type: 'number', description: '총 파일 크기' },
+                    team_members: { type: 'number', description: '팀 멤버 수' },
+                    recent_activity: { type: 'number', description: '최근 활동 (7일)' }
+                  }
+                },
+                tool_usage: {
+                  type: 'object',
+                  description: '도구별 사용량',
+                  additionalProperties: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'number' },
+                      size: { type: 'number' }
+                    }
+                  }
+                },
+                recent_uploads: {
+                  type: 'array',
+                  description: '최근 업로드 파일 (최대 10개)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      filename: { type: 'string' },
+                      tool_name: { type: 'string' },
+                      uploaded_at: { type: 'string' }
+                    }
+                  }
+                },
+                upload_trends: {
+                  type: 'object',
+                  description: '업로드 트렌드',
+                  properties: {
+                    daily: {
+                      type: 'object',
+                      description: '일별 업로드 통계 (최근 7일)',
+                      additionalProperties: {
+                        type: 'object',
+                        properties: {
+                          count: { type: 'number' },
+                          size: { type: 'number' }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -102,7 +173,46 @@ export default async function statsRoutes(fastify: FastifyInstance) {
   })
 
   // GET /stats/projects/{id} - 프로젝트별 통계
-  fastify.get('/projects/:projectId', async function (request: FastifyRequest, reply) {
+  fastify.get('/projects/:projectId', {
+    schema: {
+      tags: ['Stats'],
+      summary: '프로젝트별 통계',
+      description: '특정 프로젝트의 상세 통계를 조회합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: '프로젝트 ID' }
+        },
+        required: ['projectId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                project: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    total_files: { type: 'number' },
+                    total_size: { type: 'number' }
+                  }
+                },
+                member_contributions: { type: 'object', description: '멤버별 기여도' },
+                upload_trends: { type: 'object', description: '업로드 트렌드' },
+                file_types: { type: 'object', description: '파일 타입별 분포' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { projectId } = request.params as { projectId: string }
@@ -169,7 +279,45 @@ export default async function statsRoutes(fastify: FastifyInstance) {
   })
 
   // GET /stats/users/{id} - 사용자별 통계
-  fastify.get('/users/:userId', async function (request: FastifyRequest, reply) {
+  fastify.get('/users/:userId', {
+    schema: {
+      tags: ['Stats'],
+      summary: '사용자별 통계',
+      description: '특정 사용자의 활동 통계를 조회합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          userId: { type: 'string', description: '사용자 ID' }
+        },
+        required: ['userId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                user_id: { type: 'string' },
+                activity: {
+                  type: 'object',
+                  properties: {
+                    total_files: { type: 'number', description: '총 업로드 파일 수' },
+                    total_size: { type: 'number', description: '총 파일 크기' },
+                    projects_count: { type: 'number', description: '참여 프로젝트 수' }
+                  }
+                },
+                upload_trends: { type: 'object', description: '업로드 트렌드' },
+                tool_preferences: { type: 'object', description: '선호 도구 사용량' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { userId } = request.params as { userId: string }

@@ -19,7 +19,78 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', requireTeam())
 
   // List uploaded files
-  fastify.get('/files', async function (request: FastifyRequest, reply) {
+  fastify.get('/files', {
+    schema: {
+      tags: ['Metadata'],
+      summary: '업로드된 파일 목록 조회',
+      description: '팀의 업로드된 파일들을 페이지네이션과 필터링으로 조회합니다',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', minimum: 1, default: 1, description: '페이지 번호' },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20, description: '페이지당 항목 수' },
+          tool_name: { type: 'string', description: 'AI 도구명으로 필터링' },
+          status: { 
+            type: 'string', 
+            enum: ['uploaded', 'processing', 'processed', 'failed'],
+            description: '업로드 상태로 필터링' 
+          },
+          search: { type: 'string', description: '파일명 검색' },
+          sort: { 
+            type: 'string', 
+            enum: ['created_at', 'file_size', 'original_filename'],
+            default: 'created_at',
+            description: '정렬 기준' 
+          },
+          order: { 
+            type: 'string', 
+            enum: ['asc', 'desc'],
+            default: 'desc',
+            description: '정렬 순서' 
+          }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                files: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', description: '파일 ID' },
+                      original_filename: { type: 'string', description: '원본 파일명' },
+                      file_size: { type: 'number', description: '파일 크기' },
+                      tool_name: { type: 'string', description: 'AI 도구명' },
+                      upload_status: { type: 'string', description: '업로드 상태' },
+                      created_at: { type: 'string', description: '업로드 일시' }
+                    }
+                  }
+                },
+                pagination: {
+                  type: 'object',
+                  properties: {
+                    page: { type: 'integer' },
+                    limit: { type: 'integer' },
+                    total: { type: 'integer' },
+                    total_pages: { type: 'integer' },
+                    has_next: { type: 'boolean' },
+                    has_prev: { type: 'boolean' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const query = listFilesSchema.parse(request.query)
@@ -108,7 +179,49 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
   })
 
   // Get file details
-  fastify.get('/files/:fileId', async function (request: FastifyRequest, reply) {
+  fastify.get('/files/:fileId', {
+    schema: {
+      tags: ['Metadata'],
+      summary: '파일 상세 정보 조회',
+      description: '특정 파일의 상세 정보를 조회합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          fileId: { type: 'string', description: '파일 ID (UUID)' }
+        },
+        required: ['fileId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                original_filename: { type: 'string' },
+                file_size: { type: 'number' },
+                mime_type: { type: 'string' },
+                tool_name: { type: 'string' },
+                upload_status: { type: 'string' },
+                metadata: { type: 'object' },
+                created_at: { type: 'string' }
+              }
+            }
+          }
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { fileId } = request.params as { fileId: string }
@@ -143,7 +256,37 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
   })
 
   // Delete file
-  fastify.delete('/files/:fileId', async function (request: FastifyRequest, reply) {
+  fastify.delete('/files/:fileId', {
+    schema: {
+      tags: ['Metadata'],
+      summary: '파일 삭제',
+      description: '업로드된 파일을 완전히 삭제합니다 (본인 파일만 삭제 가능)',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          fileId: { type: 'string', description: '삭제할 파일 ID (UUID)' }
+        },
+        required: ['fileId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string', description: '삭제 완료 메시지' }
+          }
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { fileId } = request.params as { fileId: string }
@@ -203,7 +346,40 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
   })
 
   // Get team statistics
-  fastify.get('/stats', async function (request: FastifyRequest, reply) {
+  fastify.get('/stats', {
+    schema: {
+      tags: ['Metadata'],
+      summary: '팀 파일 통계',
+      description: '팀의 파일 업로드 통계를 조회합니다 (파일 수, 크기, 도구별 사용량 등)',
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                total_files: { type: 'number', description: '총 파일 수' },
+                total_size: { type: 'number', description: '총 파일 크기 (bytes)' },
+                status_counts: {
+                  type: 'object',
+                  description: '상태별 파일 수',
+                  additionalProperties: { type: 'number' }
+                },
+                tool_counts: {
+                  type: 'object',
+                  description: '도구별 파일 수',
+                  additionalProperties: { type: 'number' }
+                },
+                average_file_size: { type: 'number', description: '평균 파일 크기' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -260,7 +436,35 @@ export default async function metadataRoutes(fastify: FastifyInstance) {
   })
 
   // Download file content
-  fastify.get('/files/:fileId/download', async function (request: FastifyRequest, reply) {
+  fastify.get('/files/:fileId/download', {
+    schema: {
+      tags: ['Metadata'],
+      summary: '파일 다운로드',
+      description: '업로드된 파일의 원본 내용을 다운로드합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          fileId: { type: 'string', description: '다운로드할 파일 ID (UUID)' }
+        },
+        required: ['fileId']
+      },
+      response: {
+        200: {
+          type: 'string',
+          format: 'binary',
+          description: '파일 내용 (바이너리)'
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { fileId } = request.params as { fileId: string }

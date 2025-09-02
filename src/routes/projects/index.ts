@@ -21,7 +21,43 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', requireTeam())
 
   // GET /projects - 프로젝트 목록 조회 (uploaded_files 기반)
-  fastify.get('/', async function (request: FastifyRequest, reply) {
+  fastify.get('/', {
+    schema: {
+      tags: ['Projects'],
+      summary: '프로젝트 목록 조회',
+      description: '팀의 프로젝트 목록을 조회합니다. 업로드된 파일들을 기준으로 가상 프로젝트를 생성합니다',
+      security: [{ bearerAuth: [] }],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                projects: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', description: '프로젝트 ID' },
+                      name: { type: 'string', description: '프로젝트명' },
+                      description: { type: 'string', description: '프로젝트 설명' },
+                      file_count: { type: 'number', description: '파일 수' },
+                      total_size: { type: 'number', description: '총 파일 크기' },
+                      last_updated: { type: 'string', description: '마지막 업데이트' },
+                      tool_name: { type: 'string', description: '주요 AI 도구' }
+                    }
+                  }
+                },
+                total: { type: 'number', description: '총 프로젝트 수' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const supabase = getSupabase()
@@ -89,7 +125,41 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   })
 
   // POST /projects - 새 프로젝트 생성 (placeholder)
-  fastify.post('/', async function (request: FastifyRequest, reply) {
+  fastify.post('/', {
+    schema: {
+      tags: ['Projects'],
+      summary: '새 프로젝트 생성',
+      description: '새로운 프로젝트를 생성합니다. 파일 업로드 시 이 프로젝트명으로 그룹화됩니다',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string', minLength: 1, description: '프로젝트명' },
+          description: { type: 'string', description: '프로젝트 설명' },
+          folder_path: { type: 'string', description: '폴더 경로' }
+        }
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                description: { type: 'string' },
+                created_at: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const projectData = createProjectSchema.parse(request.body)
       
@@ -129,7 +199,52 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   })
 
   // GET /projects/{id} - 프로젝트 상세 (세션 목록)
-  fastify.get('/:projectId', async function (request: FastifyRequest, reply) {
+  fastify.get('/:projectId', {
+    schema: {
+      tags: ['Projects'],
+      summary: '프로젝트 상세 조회',
+      description: '특정 프로젝트의 상세 정보와 세션 목록을 조회합니다',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: '프로젝트 ID' }
+        },
+        required: ['projectId']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                description: { type: 'string' },
+                file_count: { type: 'number' },
+                total_size: { type: 'number' },
+                sessions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      tool_name: { type: 'string' },
+                      session_date: { type: 'string' },
+                      upload_status: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const user = (request as AuthenticatedRequest).user
       const { projectId } = request.params as { projectId: string }
@@ -291,7 +406,39 @@ export default async function projectRoutes(fastify: FastifyInstance) {
   })
 
   // POST /projects/find-or-create - 폴더명 기준 프로젝트 자동 생성/찾기
-  fastify.post('/find-or-create', async function (request: FastifyRequest, reply) {
+  fastify.post('/find-or-create', {
+    schema: {
+      tags: ['Projects'],
+      summary: '프로젝트 자동 생성/찾기',
+      description: '폴더 경로나 도구명을 기준으로 프로젝트를 자동으로 찾거나 생성합니다',
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          folder_path: { type: 'string', description: '폴더 경로' },
+          tool_name: { type: 'string', description: 'AI 도구명' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' },
+            data: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+                description: { type: 'string' },
+                created_at: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
     try {
       const { folder_path, tool_name } = request.body as { folder_path?: string; tool_name?: string }
       

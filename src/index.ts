@@ -73,7 +73,24 @@ await fastify.register(fastifyStatic, {
 })
 
 // Health check
-fastify.get('/health', async () => {
+fastify.get('/health', {
+  schema: {
+    tags: ['System'],
+    summary: '서버 상태 확인',
+    description: 'API 서버의 상태와 버전 정보를 확인합니다',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', description: '성공 여부' },
+          message: { type: 'string', description: '상태 메시지' },
+          timestamp: { type: 'string', description: '현재 시간' },
+          version: { type: 'string', description: 'API 버전' }
+        }
+      }
+    }
+  }
+}, async () => {
   return { 
     success: true,
     message: 'VibeReview API is running',

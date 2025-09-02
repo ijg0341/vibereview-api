@@ -27,19 +27,46 @@ VibeReview API는 Claude Code, Codex, Gemini CLI 등 AI 코딩 도구의 세션 
 
 ## 📋 API 엔드포인트
 
-### 파일 업로드
+### 🔐 인증 API
+- `POST /api/auth/login` - 이메일/비밀번호 로그인
+- `POST /api/auth/signup` - 신규 사용자 가입
+- `POST /api/auth/logout` - 로그아웃
+- `GET /api/auth/session` - 현재 세션 확인
+- `POST /api/auth/callback` - OAuth 콜백 (미구현)
+
+### 👤 사용자 관리 API
+- `GET /api/users/profile` - 내 프로필 조회
+- `PUT /api/users/profile` - 프로필 수정
+- `GET /api/users/settings` - 사용자 설정 조회
+- `PUT /api/users/settings` - 사용자 설정 변경
+
+### 📁 프로젝트 관리 API
+- `GET /api/projects` - 프로젝트 목록 조회
+- `POST /api/projects` - 새 프로젝트 생성
+- `GET /api/projects/{id}` - 프로젝트 상세 정보
+- `PUT /api/projects/{id}` - 프로젝트 수정
+- `DELETE /api/projects/{id}` - 프로젝트 삭제
+- `GET /api/projects/{id}/sessions` - 프로젝트 세션 목록
+- `POST /api/projects/find-or-create` - 자동 프로젝트 생성
+
+### 📤 파일 업로드 API
 - `POST /api/upload/file` - 단일 파일 업로드
 - `POST /api/upload/batch` - 배치 파일 업로드
 - `GET /api/upload/status/:fileId` - 업로드 상태 확인
 
-### 메타데이터 관리
+### 📋 메타데이터 관리 API
 - `GET /api/metadata/files` - 파일 목록 조회 (페이지네이션, 필터링)
 - `GET /api/metadata/files/:fileId` - 파일 상세 정보
 - `DELETE /api/metadata/files/:fileId` - 파일 삭제
-- `GET /api/metadata/stats` - 팀 통계
+- `GET /api/metadata/stats` - 팀 파일 통계
 - `GET /api/metadata/files/:fileId/download` - 파일 다운로드
 
-### 헬스체크
+### 📊 통계 및 대시보드 API
+- `GET /api/stats/dashboard` - 메인 대시보드 통계
+- `GET /api/stats/projects/{id}` - 프로젝트별 통계
+- `GET /api/stats/users/{id}` - 사용자별 통계
+
+### ⚡ 시스템 API
 - `GET /health` - 서버 상태 확인
 
 ## 🚦 빠른 시작
@@ -84,18 +111,24 @@ pnpm dev
 
 ## 🧪 API 테스트
 
-### 커스텀 테스트 페이지 (추천)
+### 📚 Swagger UI (API 문서)
+```
+http://localhost:3001/docs
+```
+- **완전한 API 문서화** - 모든 엔드포인트 상세 설명
+- **카테고리별 분류** - Auth, Users, Projects, Upload, Metadata, Stats
+- **Try it out 기능** - JWT 토큰 설정 후 바로 테스트
+- **OpenAPI 스키마** - 요청/응답 구조 명세
+
+### 🎯 커스텀 테스트 페이지
 ```
 http://localhost:3001/test/
 ```
+- **파일 업로드 특화** - 드래그 앤 드롭, 실시간 상태
+- **JWT 토큰 관리** - 브라우저 저장소 활용
+- **직관적 UI** - 반응형 디자인
 
-**기능:**
-- 🎯 **파일 업로드**: 드래그 앤 드롭 지원, 실시간 크기 표시
-- 🔐 **JWT 토큰 관리**: 브라우저 저장소 활용, 자동 적용
-- 📊 **모든 API 테스트**: 파일 목록, 통계, 상세/다운로드/삭제
-- 🎨 **직관적 UI**: 반응형 디자인, 실시간 상태 표시
-
-### Postman 컬렉션
+### 📋 Postman 컬렉션
 프로젝트 루트의 `VibeReview-API.postman_collection.json` import
 
 ## 📝 개발 명령어
