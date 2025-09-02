@@ -1,0 +1,157 @@
+{
+  "info": {
+    "name": "VibeReview API",
+    "description": "VibeReview 파일 업로드 및 메타데이터 API 테스트 컬렉션",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "jwt_token",
+      "value": "YOUR_JWT_TOKEN_HERE"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "파일 업로드",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "test-session.json"
+            },
+            {
+              "key": "tool_name",
+              "value": "claude-code",
+              "type": "text"
+            },
+            {
+              "key": "session_date",
+              "value": "2024-01-01",
+              "type": "text"
+            },
+            {
+              "key": "metadata",
+              "value": "{\"project\":\"test-project\"}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/upload/file",
+          "host": ["{{base_url}}"],
+          "path": ["api", "upload", "file"]
+        }
+      }
+    },
+    {
+      "name": "파일 목록 조회",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/metadata/files?page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["api", "metadata", "files"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "팀 통계",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/metadata/stats",
+          "host": ["{{base_url}}"],
+          "path": ["api", "metadata", "stats"]
+        }
+      }
+    },
+    {
+      "name": "파일 상세 조회",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/metadata/files/{{file_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "metadata", "files", "{{file_id}}"]
+        }
+      },
+      "variable": [
+        {
+          "key": "file_id",
+          "value": "FILE_ID_HERE"
+        }
+      ]
+    },
+    {
+      "name": "파일 다운로드",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/metadata/files/{{file_id}}/download",
+          "host": ["{{base_url}}"],
+          "path": ["api", "metadata", "files", "{{file_id}}", "download"]
+        }
+      }
+    },
+    {
+      "name": "파일 삭제",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/metadata/files/{{file_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "metadata", "files", "{{file_id}}"]
+        }
+      }
+    }
+  ]
+}

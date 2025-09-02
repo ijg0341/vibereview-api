@@ -4,14 +4,19 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
 import { validateEnv } from './types/env.js'
 import { initSupabase } from './utils/supabase.js'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 
 // Import routes
 import uploadRoutes from './routes/upload/index.js'
 import metadataRoutes from './routes/metadata/index.js'
 
 const env = validateEnv()
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 const fastify = Fastify({
   logger: {
@@ -48,6 +53,12 @@ await fastify.register(multipart, {
     fileSize: env.MAX_FILE_SIZE,
     files: 1, // Only allow one file per request
   },
+})
+
+// Register static files (테스트 페이지)
+await fastify.register(fastifyStatic, {
+  root: join(__dirname, '..', 'public'),
+  prefix: '/test/',
 })
 
 // Health check

@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeReview API 테스트</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .status {
+            padding: 20px 30px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+        
+        .status-dot.online { background: #10b981; }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .auth-section {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: #f9fafb;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .section-content {
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        
+        .file-upload {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload:hover {
+            border-color: #4f46e5;
+            background: #f8fafc;
+        }
+        
+        .file-upload.dragover {
+            border-color: #4f46e5;
+            background: #eef2ff;
+        }
+        
+        .btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #4338ca;
+        }
+        
+        .btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .response.success {
+            background: #ecfdf5;
+            border: 1px solid #10b981;
+            color: #047857;
+        }
+        
+        .response.error {
+            background: #fef2f2;
+            border: 1px solid #ef4444;
+            color: #dc2626;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 VibeReview API</h1>
+            <p>AI 코딩 도구 세션 파일 업로드 & 메타데이터 API 테스트</p>
+        </div>
+        
+        <div class="status">
+            <div class="status-item">
+                <div class="status-dot" id="serverStatus"></div>
+                <span id="serverStatusText">서버 상태 확인 중...</span>
+            </div>
+            <div class="status-item">
+                <span id="serverInfo">http://localhost:3001</span>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- JWT 토큰 설정 -->
+            <div class="auth-section">
+                <h3>🔐 JWT 토큰 설정</h3>
+                <div class="form-group">
+                    <label for="jwtToken">JWT 토큰 (Supabase Auth)</label>
+                    <input type="password" id="jwtToken" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                    <small style="color: #6b7280; margin-top: 5px; display: block;">
+                        Supabase Dashboard에서 사용자 생성 후 JWT 토큰을 입력하세요
+                    </small>
+                </div>
+                <button class="btn btn-secondary" onclick="saveToken()">토큰 저장</button>
+                <button class="btn btn-secondary" onclick="clearToken()">토큰 삭제</button>
+            </div>
+            
+            <!-- 파일 업로드 테스트 -->
+            <div class="section">
+                <div class="section-header">📤 파일 업로드 테스트</div>
+                <div class="section-content">
+                    <div class="form-group">
+                        <label>파일 선택</label>
+                        <div class="file-upload" id="fileUpload">
+                            <div>
+                                <p><strong>클릭하거나 드래그</strong>해서 파일 업로드</p>
+                                <p style="color: #6b7280; margin-top: 8px;">지원 형식: .json, .jsonl, .csv, .txt (최대 50MB)</p>
+                            </div>
+                            <input type="file" id="fileInput" hidden accept=".json,.jsonl,.csv,.txt">
+                        </div>
+                        <div id="selectedFile" class="hidden" style="margin-top: 10px; padding: 10px; background: #f3f4f6; border-radius: 6px;">
+                            <span id="fileName"></span>
+                            <button onclick="clearFile()" style="float: right; background: none; border: none; color: #ef4444; cursor: pointer;">✕</button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="toolName">AI 도구 이름</label>
+                            <select id="toolName">
+                                <option value="">자동 감지</option>
+                                <option value="claude-code">Claude Code</option>
+                                <option value="github-codex">GitHub Codex</option>
+                                <option value="gemini-cli">Gemini CLI</option>
+                                <option value="cursor">Cursor</option>
+                                <option value="other">기타</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="sessionDate">세션 날짜</label>
+                            <input type="date" id="sessionDate">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="metadata">메타데이터 (JSON)</label>
+                        <textarea id="metadata" rows="3" placeholder='{"project": "my-project", "version": "1.0"}'></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="uploadFile()" id="uploadBtn">
+                        <span id="uploadText">파일 업로드</span>
+                        <span id="uploadLoading" class="loading hidden"></span>
+                    </button>
+                    
+                    <div id="uploadResponse" class="response hidden"></div>
+                </div>
+            </div>
+            
+            <!-- 파일 목록 조회 -->
+            <div class="section">
+                <div class="section-header">📋 파일 목록 조회</div>
+                <div class="section-content">
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="listPage">페이지</label>
+                            <input type="number" id="listPage" value="1" min="1">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="listLimit">개수</label>
+                            <select id="listLimit">
+                                <option value="10">10개</option>
+                                <option value="20" selected>20개</option>
+                                <option value="50">50개</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid">
+                        <div class="form-group">
+                            <label for="filterTool">AI 도구 필터</label>
+                            <select id="filterTool">
+                                <option value="">전체</option>
+                                <option value="claude-code">Claude Code</option>
+                                <option value="github-codex">GitHub Codex</option>
+                                <option value="gemini-cli">Gemini CLI</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="filterStatus">상태 필터</label>
+                            <select id="filterStatus">
+                                <option value="">전체</option>
+                                <option value="uploaded">업로드됨</option>
+                                <option value="processing">처리중</option>
+                                <option value="processed">처리완료</option>
+                                <option value="failed">실패</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button class="btn" onclick="listFiles()">파일 목록 조회</button>
+                    
+                    <div id="listResponse" class="response hidden"></div>
+                </div>
+            </div>
+            
+            <!-- 팀 통계 -->
+            <div class="section">
+                <div class="section-header">📊 팀 통계</div>
+                <div class="section-content">
+                    <button class="btn" onclick="getStats()">통계 조회</button>
+                    <div id="statsResponse" class="response hidden"></div>
+                </div>
+            </div>
+            
+            <!-- 기타 API 테스트 -->
+            <div class="section">
+                <div class="section-header">🔧 기타 API 테스트</div>
+                <div class="section-content">
+                    <div class="form-group">
+                        <label for="fileId">파일 ID</label>
+                        <input type="text" id="fileId" placeholder="uuid 형식의 파일 ID">
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="getFileDetail()">파일 상세</button>
+                        <button class="btn btn-secondary" onclick="downloadFile()">파일 다운로드</button>
+                        <button class="btn" style="background: #ef4444;" onclick="deleteFile()">파일 삭제</button>
+                    </div>
+                    
+                    <div id="otherResponse" class="response hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        let authToken = localStorage.getItem('vibe_jwt_token') || '';
+        
+        // 페이지 로드 시 서버 상태 확인
+        window.onload = async () => {
+            await checkServerStatus();
+            if (authToken) {
+                document.getElementById('jwtToken').value = authToken;
+            }
+            setupFileUpload();
+        };
+        
+        // 서버 상태 확인
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                document.getElementById('serverStatus').className = 'status-dot online';
+                document.getElementById('serverStatusText').textContent = '서버 온라인';
+                document.getElementById('serverInfo').textContent = data.message;
+            } catch (error) {
+                document.getElementById('serverStatus').className = 'status-dot';
+                document.getElementById('serverStatusText').textContent = '서버 오프라인';
+                document.getElementById('serverInfo').textContent = error.message;
+            }
+        }
+        
+        // JWT 토큰 관리
+        function saveToken() {
+            const token = document.getElementById('jwtToken').value.trim();
+            if (token) {
+                localStorage.setItem('vibe_jwt_token', token);
+                authToken = token;
+                alert('토큰이 저장되었습니다!');
+            } else {
+                alert('토큰을 입력해주세요.');
+            }
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('vibe_jwt_token');
+            authToken = '';
+            document.getElementById('jwtToken').value = '';
+            alert('토큰이 삭제되었습니다.');
+        }
+        
+        // 파일 업로드 UI 설정
+        function setupFileUpload() {
+            const fileUpload = document.getElementById('fileUpload');
+            const fileInput = document.getElementById('fileInput');
+            
+            fileUpload.onclick = () => fileInput.click();
+            
+            fileInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    showSelectedFile(file);
+                }
+            };
+            
+            // 드래그 앤 드롭
+            fileUpload.ondragover = (e) => {
+                e.preventDefault();
+                fileUpload.classList.add('dragover');
+            };
+            
+            fileUpload.ondragleave = () => {
+                fileUpload.classList.remove('dragover');
+            };
+            
+            fileUpload.ondrop = (e) => {
+                e.preventDefault();
+                fileUpload.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    fileInput.files = e.dataTransfer.files;
+                    showSelectedFile(file);
+                }
+            };
+        }
+        
+        function showSelectedFile(file) {
+            document.getElementById('fileName').textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
+            document.getElementById('selectedFile').classList.remove('hidden');
+        }
+        
+        function clearFile() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('selectedFile').classList.add('hidden');
+        }
+        
+        // API 호출 헬퍼
+        async function makeRequest(url, options = {}) {
+            try {
+                const headers = {
+                    ...options.headers,
+                };
+                
+                if (authToken && !options.skipAuth) {
+                    headers['Authorization'] = `Bearer ${authToken}`;
+                }
+                
+                const response = await fetch(url, { ...options, headers });
+                const data = await response.json();
+                
+                return {
+                    status: response.status,
+                    data,
+                    ok: response.ok
+                };
+            } catch (error) {
+                return {
+                    status: 0,
+                    data: { error: error.message },
+                    ok: false
+                };
+            }
+        }
+        
+        function showResponse(elementId, result) {
+            const element = document.getElementById(elementId);
+            element.classList.remove('hidden', 'success', 'error');
+            element.classList.add(result.ok ? 'success' : 'error');
+            element.textContent = JSON.stringify(result.data, null, 2);
+        }
+        
+        function setLoading(buttonId, textId, loadingId, isLoading) {
+            document.getElementById(buttonId).disabled = isLoading;
+            document.getElementById(textId).classList.toggle('hidden', isLoading);
+            document.getElementById(loadingId).classList.toggle('hidden', !isLoading);
+        }
+        
+        // API 테스트 함수들
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('파일을 선택해주세요!');
+                return;
+            }
+            
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            setLoading('uploadBtn', 'uploadText', 'uploadLoading', true);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('tool_name', document.getElementById('toolName').value);
+            formData.append('session_date', document.getElementById('sessionDate').value);
+            formData.append('metadata', document.getElementById('metadata').value);
+            
+            const result = await makeRequest(`${API_BASE}/api/upload/file`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            setLoading('uploadBtn', 'uploadText', 'uploadLoading', false);
+            showResponse('uploadResponse', result);
+            
+            if (result.ok) {
+                // 성공 시 파일 목록 자동 갱신
+                setTimeout(listFiles, 1000);
+            }
+        }
+        
+        async function listFiles() {
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            const page = document.getElementById('listPage').value;
+            const limit = document.getElementById('listLimit').value;
+            const toolFilter = document.getElementById('filterTool').value;
+            const statusFilter = document.getElementById('filterStatus').value;
+            
+            const params = new URLSearchParams({
+                page,
+                limit,
+                ...(toolFilter && { tool_name: toolFilter }),
+                ...(statusFilter && { status: statusFilter })
+            });
+            
+            const result = await makeRequest(`${API_BASE}/api/metadata/files?${params}`);
+            showResponse('listResponse', result);
+        }
+        
+        async function getStats() {
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/api/metadata/stats`);
+            showResponse('statsResponse', result);
+        }
+        
+        async function getFileDetail() {
+            const fileId = document.getElementById('fileId').value.trim();
+            if (!fileId) {
+                alert('파일 ID를 입력해주세요!');
+                return;
+            }
+            
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/api/metadata/files/${fileId}`);
+            showResponse('otherResponse', result);
+        }
+        
+        async function downloadFile() {
+            const fileId = document.getElementById('fileId').value.trim();
+            if (!fileId) {
+                alert('파일 ID를 입력해주세요!');
+                return;
+            }
+            
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/metadata/files/${fileId}/download`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'download';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    showResponse('otherResponse', { status: 200, data: { message: '파일 다운로드 성공' }, ok: true });
+                } else {
+                    const error = await response.json();
+                    showResponse('otherResponse', { status: response.status, data: error, ok: false });
+                }
+            } catch (error) {
+                showResponse('otherResponse', { status: 0, data: { error: error.message }, ok: false });
+            }
+        }
+        
+        async function deleteFile() {
+            const fileId = document.getElementById('fileId').value.trim();
+            if (!fileId) {
+                alert('파일 ID를 입력해주세요!');
+                return;
+            }
+            
+            if (!authToken) {
+                alert('JWT 토큰을 설정해주세요!');
+                return;
+            }
+            
+            if (!confirm('정말로 파일을 삭제하시겠습니까?')) {
+                return;
+            }
+            
+            const result = await makeRequest(`${API_BASE}/api/metadata/files/${fileId}`, {
+                method: 'DELETE'
+            });
+            
+            showResponse('otherResponse', result);
+            
+            if (result.ok) {
+                // 성공 시 파일 목록 자동 갱신
+                setTimeout(listFiles, 1000);
+            }
+        }
+        
+        // 초기 날짜 설정
+        document.getElementById('sessionDate').value = new Date().toISOString().split('T')[0];
+    </script>
+</body>
+</html>
