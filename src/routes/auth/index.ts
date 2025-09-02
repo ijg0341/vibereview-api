@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { authMiddleware, type AuthenticatedRequest } from '../../middleware/auth.js'
 import { getSupabase } from '../../utils/supabase.js'
 import { z } from 'zod'
 
@@ -236,8 +237,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     schema: {
       tags: ['Auth'],
       summary: '현재 세션 확인',
-      description: 'JWT 토큰으로 현재 로그인 상태와 사용자 정보를 확인합니다',
-      security: [{ bearerAuth: [] }],
+      description: 'JWT 토큰 또는 API 키로 현재 로그인 상태와 사용자 정보를 확인합니다',
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
       response: {
         200: {
           type: 'object',
@@ -251,9 +252,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
                   properties: {
                     id: { type: 'string', description: '사용자 ID' },
                     email: { type: 'string', description: '이메일' },
-                    created_at: { type: 'string', description: '가입일' },
-                    profile: { type: 'object', description: '프로필 정보' }
+                    team_id: { type: 'string', description: '팀 ID' },
+                    role: { type: 'string', description: '역할' }
                   }
+                },
+                auth_method: { 
+                  type: 'string', 
+                  enum: ['jwt', 'apikey'],
+                  description: '인증 방법' 
                 }
               }
             }
@@ -269,27 +275,24 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }
     }
   }, async function (request: FastifyRequest, reply) {
+    // Apply auth middleware manually for this endpoint
+    await authMiddleware(request, reply)
+    if (reply.sent) return // If middleware sent a response, stop here
     try {
-      const authHeader = request.headers.authorization
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Missing authorization header'
-        })
-      }
-
-      const token = authHeader.replace('Bearer ', '')
+      const user = (request as AuthenticatedRequest).user
+      const authMethod = (request as AuthenticatedRequest).auth_method
       const supabase = getSupabase()
 
-      const { data: { user }, error } = await supabase.auth.getUser(token)
-      if (error || !user) {
-        return reply.status(401).send({
-          success: false,
-          error: 'Invalid or expired token'
-        })
+      // Get detailed user info if JWT (has email)
+      let detailedUser = null
+      if (authMethod === 'jwt') {
+        const { data: { user: authUser } } = await supabase.auth.getUser(
+          request.headers.authorization!.replace('Bearer ', '')
+        )
+        detailedUser = authUser
       }
 
-      // Get user profile
+      // Get profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -301,11 +304,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
         data: {
           user: {
             id: user.id,
-            email: user.email,
-            created_at: user.created_at,
-            email_confirmed_at: user.email_confirmed_at,
+            email: authMethod === 'jwt' ? detailedUser?.email : undefined,
+            team_id: user.team_id,
+            role: user.role,
+            created_at: authMethod === 'jwt' ? detailedUser?.created_at : undefined,
+            email_confirmed_at: authMethod === 'jwt' ? detailedUser?.email_confirmed_at : undefined,
             profile: profile || null
-          }
+          },
+          auth_method: authMethod
         }
       })
 
