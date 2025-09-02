@@ -16,11 +16,20 @@ export const swaggerOptions = {
         name: 'Authorization',
         in: 'header' as const,
         description: 'JWT 토큰을 "Bearer {token}" 형식으로 입력'
+      },
+      apiKeyAuth: {
+        type: 'apiKey' as const,
+        name: 'Authorization',
+        in: 'header' as const,
+        description: 'API 키를 "ApiKey vr_xxxx" 형식으로 입력'
       }
     },
     security: [
       {
         bearerAuth: []
+      },
+      {
+        apiKeyAuth: []
       }
     ],
     tags: [
@@ -47,6 +56,10 @@ export const swaggerOptions = {
       {
         name: 'Stats',
         description: '통계 및 대시보드 API'
+      },
+      {
+        name: 'API Keys',
+        description: 'API 키 관리 (CLI 연동용)'
       }
     ]
   }

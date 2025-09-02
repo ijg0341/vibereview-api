@@ -119,6 +119,47 @@ export interface Database {
           updated_at?: string
         }
       }
+      api_keys: {
+        Row: {
+          id: string
+          user_id: string
+          team_id: string
+          name: string
+          key_hash: string
+          key_preview: string
+          is_active: boolean
+          last_used_at: string | null
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          team_id: string
+          name: string
+          key_hash: string
+          key_preview: string
+          is_active?: boolean
+          last_used_at?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          team_id?: string
+          name?: string
+          key_hash?: string
+          key_preview?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -152,6 +193,10 @@ export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 export type UploadedFile = Database['public']['Tables']['uploaded_files']['Row']
 export type UploadedFileInsert = Database['public']['Tables']['uploaded_files']['Insert']
 export type UploadedFileUpdate = Database['public']['Tables']['uploaded_files']['Update']
+
+export type ApiKey = Database['public']['Tables']['api_keys']['Row']
+export type ApiKeyInsert = Database['public']['Tables']['api_keys']['Insert']
+export type ApiKeyUpdate = Database['public']['Tables']['api_keys']['Update']
 
 export type UserRole = Database['public']['Enums']['user_role']
 export type UploadStatus = Database['public']['Enums']['upload_status']

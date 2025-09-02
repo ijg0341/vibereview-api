@@ -18,6 +18,7 @@ import authRoutes from './routes/auth/index.js'
 import userRoutes from './routes/users/index.js'
 import projectRoutes from './routes/projects/index.js'
 import statsRoutes from './routes/stats/index.js'
+import apiKeyRoutes from './routes/api-keys/index.js'
 import uploadRoutes from './routes/upload/index.js'
 import metadataRoutes from './routes/metadata/index.js'
 
@@ -110,6 +111,7 @@ await fastify.register(authRoutes, { prefix: '/api/auth' })
 await fastify.register(userRoutes, { prefix: '/api/users' })
 await fastify.register(projectRoutes, { prefix: '/api/projects' })
 await fastify.register(statsRoutes, { prefix: '/api/stats' })
+await fastify.register(apiKeyRoutes, { prefix: '/api/api-keys' })
 await fastify.register(uploadRoutes, { prefix: '/api/upload' })
 await fastify.register(metadataRoutes, { prefix: '/api/metadata' })
 

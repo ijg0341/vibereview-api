@@ -32,6 +32,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.38.0
         version: 2.56.1
+      bcryptjs:
+        specifier: ^3.0.2
+        version: 3.0.2
       crypto:
         specifier: ^1.0.1
         version: 1.0.1
@@ -51,6 +54,9 @@ importers:
         specifier: ^3.22.4
         version: 3.25.76
     devDependencies:
+      '@types/bcryptjs':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@types/mime-types':
         specifier: ^2.1.4
         version: 2.1.4
@@ -579,6 +585,10 @@ packages:
   '@supabase/supabase-js@2.56.1':
     resolution: {integrity: sha512-cb/kS0d6G/qbcmUFItkqVrQbxQHWXzfRZuoiSDv/QiU6RbGNTn73XjjvmbBCZ4MMHs+5teihjhpEVluqbXISEg==}
 
+  '@types/bcryptjs@3.0.0':
+    resolution: {integrity: sha512-WRZOuCuaz8UcZZE4R5HXTco2goQSI2XxjGY3hbM/xDvwmqFWd4ivooImsMx65OKM6CtNKbnZ5YL+YwAwK7c1dg==}
+    deprecated: This is a stub types definition. bcryptjs provides its own type definitions, so you do not need this installed.
+
   '@types/chai-subset@1.3.6':
     resolution: {integrity: sha512-m8lERkkQj+uek18hXOZuec3W/fCRTrU4hrnXjH3qhHy96ytuPaPiWGgu7sJb7tZxZonO75vYAjCvpe/e4VUwRw==}
     peerDependencies:
@@ -695,6 +705,10 @@ packages:
 
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
+
+  bcryptjs@3.0.2:
+    resolution: {integrity: sha512-k38b3XOZKv60C4E2hVsXTolJWfkGRMbILBIe2IBITXciy5bOsTKot5kDrf3ZfufQtQOUN5mXceUEpU1rTl9Uog==}
+    hasBin: true
 
   brace-expansion@2.0.2:
     resolution: {integrity: sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ==}
@@ -1764,6 +1778,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@types/bcryptjs@3.0.0':
+    dependencies:
+      bcryptjs: 3.0.2
+
   '@types/chai-subset@1.3.6(@types/chai@4.3.20)':
     dependencies:
       '@types/chai': 4.3.20
@@ -1880,6 +1898,8 @@ snapshots:
   balanced-match@1.0.2: {}
 
   base64-js@1.5.1: {}
+
+  bcryptjs@3.0.2: {}
 
   brace-expansion@2.0.2:
     dependencies:
