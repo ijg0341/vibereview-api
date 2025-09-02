@@ -33,31 +33,8 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
       tags: ['Upload'],
       summary: '단일 파일 업로드',
       description: 'AI 도구 세션 파일을 업로드합니다. 중복 파일은 메타데이터만 업데이트됩니다',
-      security: [{ bearerAuth: [] }],
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
       consumes: ['multipart/form-data'],
-      body: {
-        type: 'object',
-        properties: {
-          file: { 
-            type: 'string', 
-            format: 'binary',
-            description: '업로드할 세션 파일 (.json, .jsonl, .csv, .txt)'
-          },
-          tool_name: { 
-            type: 'string', 
-            description: 'AI 도구 이름 (선택사항, 자동 감지됨)' 
-          },
-          session_date: { 
-            type: 'string', 
-            format: 'date',
-            description: '세션 날짜 (선택사항)' 
-          },
-          metadata: { 
-            type: 'string', 
-            description: '추가 메타데이터 (JSON 문자열)' 
-          }
-        }
-      },
       response: {
         201: {
           type: 'object',
@@ -296,7 +273,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
       tags: ['Upload'],
       summary: '배치 파일 업로드',
       description: '여러 파일을 한 번에 업로드합니다 (현재 구현 중)',
-      security: [{ bearerAuth: [] }],
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
       consumes: ['multipart/form-data'],
       response: {
         501: {

@@ -19,10 +19,125 @@ const verifyApiKeySchema = z.object({
 })
 
 export default async function apiKeyRoutes(fastify: FastifyInstance) {
-  // Apply authentication middleware (except for verify endpoint)
+  // First register the verify endpoint without auth
+  // POST /api-keys/verify - CLI용 API 키 검증 (인증 불필요)
+  fastify.post('/verify', {
+    schema: {
+      tags: ['API Keys'],
+      summary: 'API 키 검증',
+      description: 'CLI나 외부 도구에서 API 키의 유효성을 검증합니다. 인증 토큰 없이 호출 가능합니다',
+      body: {
+        type: 'object',
+        required: ['api_key'],
+        properties: {
+          api_key: { 
+            type: 'string', 
+            pattern: '^vr_[A-Za-z0-9_-]{28}$',
+            description: 'API 키 (vr_로 시작하는 31자리)' 
+          }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                valid: { type: 'boolean', description: '키 유효성' },
+                user_id: { type: 'string', description: '키 소유자 ID' },
+                team_id: { type: 'string', description: '팀 ID' },
+                name: { type: 'string', description: '키 이름' },
+                expires_at: { type: 'string', description: '만료일' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
+    try {
+      const { api_key } = verifyApiKeySchema.parse(request.body)
+      const supabase = getSupabase()
+
+      // API 키 조회
+      const { data: apiKeys, error } = await supabase
+        .from('api_keys')
+        .select('id, user_id, team_id, name, key_hash, is_active, expires_at')
+        .eq('is_active', true) as { data: any; error: any }
+
+      if (error) {
+        request.log.error(error, 'Failed to fetch API keys for verification')
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to verify API key'
+        })
+      }
+
+      // 해시 검증
+      const matchingKey = apiKeys?.find((key: any) => verifyApiKey(api_key, key.key_hash))
+
+      if (!matchingKey) {
+        return reply.send({
+          success: true,
+          data: {
+            valid: false,
+            message: 'Invalid or inactive API key'
+          }
+        })
+      }
+
+      // 만료일 확인
+      const now = new Date()
+      if (matchingKey.expires_at && new Date(matchingKey.expires_at) < now) {
+        return reply.send({
+          success: true,
+          data: {
+            valid: false,
+            message: 'API key has expired'
+          }
+        })
+      }
+
+      // 마지막 사용 시간 업데이트
+      await (supabase as any)
+        .from('api_keys')
+        .update({ last_used_at: now.toISOString() })
+        .eq('id', matchingKey.id)
+
+      return reply.send({
+        success: true,
+        data: {
+          valid: true,
+          user_id: matchingKey.user_id,
+          team_id: matchingKey.team_id,
+          name: matchingKey.name,
+          expires_at: matchingKey.expires_at
+        }
+      })
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid input',
+          details: error.issues
+        })
+      }
+
+      request.log.error(error, 'Verify API key error')
+      return reply.status(500).send({
+        success: false,
+        error: 'Internal server error'
+      })
+    }
+  })
+
+  // Apply authentication middleware to all other endpoints (skip verify)
   fastify.addHook('preHandler', async (request, reply) => {
     // Skip auth for verify endpoint
-    if (request.url === '/verify' && request.method === 'POST') {
+    if (request.url.endsWith('/verify') && request.method === 'POST') {
       return
     }
     await authMiddleware(request, reply)
@@ -368,117 +483,4 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
     }
   })
 
-  // POST /api-keys/verify - CLI용 API 키 검증
-  fastify.post('/verify', {
-    schema: {
-      tags: ['API Keys'],
-      summary: 'API 키 검증',
-      description: 'CLI나 외부 도구에서 API 키의 유효성을 검증합니다. 인증 토큰 없이 호출 가능합니다',
-      body: {
-        type: 'object',
-        required: ['api_key'],
-        properties: {
-          api_key: { 
-            type: 'string', 
-            pattern: '^vr_[A-Za-z0-9_-]{28}$',
-            description: 'API 키 (vr_로 시작하는 31자리)' 
-          }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              type: 'object',
-              properties: {
-                valid: { type: 'boolean', description: '키 유효성' },
-                user_id: { type: 'string', description: '키 소유자 ID' },
-                team_id: { type: 'string', description: '팀 ID' },
-                name: { type: 'string', description: '키 이름' },
-                expires_at: { type: 'string', description: '만료일' }
-              }
-            }
-          }
-        }
-      }
-    }
-  }, async function (request: FastifyRequest, reply) {
-    try {
-      const { api_key } = verifyApiKeySchema.parse(request.body)
-      const supabase = getSupabase()
-
-      // API 키 조회
-      const { data: apiKeys, error } = await supabase
-        .from('api_keys')
-        .select('id, user_id, team_id, name, key_hash, is_active, expires_at')
-        .eq('is_active', true) as { data: any; error: any }
-
-      if (error) {
-        request.log.error(error, 'Failed to fetch API keys for verification')
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to verify API key'
-        })
-      }
-
-      // 해시 검증
-      const matchingKey = apiKeys?.find((key: any) => verifyApiKey(api_key, key.key_hash))
-
-      if (!matchingKey) {
-        return reply.send({
-          success: true,
-          data: {
-            valid: false,
-            message: 'Invalid or inactive API key'
-          }
-        })
-      }
-
-      // 만료일 확인
-      const now = new Date()
-      if (matchingKey.expires_at && new Date(matchingKey.expires_at) < now) {
-        return reply.send({
-          success: true,
-          data: {
-            valid: false,
-            message: 'API key has expired'
-          }
-        })
-      }
-
-      // 마지막 사용 시간 업데이트
-      await (supabase as any)
-        .from('api_keys')
-        .update({ last_used_at: now.toISOString() })
-        .eq('id', matchingKey.id)
-
-      return reply.send({
-        success: true,
-        data: {
-          valid: true,
-          user_id: matchingKey.user_id,
-          team_id: matchingKey.team_id,
-          name: matchingKey.name,
-          expires_at: matchingKey.expires_at
-        }
-      })
-
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Invalid input',
-          details: error.issues
-        })
-      }
-
-      request.log.error(error, 'Verify API key error')
-      return reply.status(500).send({
-        success: false,
-        error: 'Internal server error'
-      })
-    }
-  })
 }
