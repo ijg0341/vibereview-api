@@ -10,6 +10,7 @@ import swaggerUi from '@fastify/swagger-ui'
 import { validateEnv } from './types/env.js'
 import { initSupabase } from './utils/supabase.js'
 import { swaggerOptions, swaggerUiOptions } from './swagger.js'
+import { apiLoggingMiddleware } from './middleware/logging.js'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
@@ -28,7 +29,18 @@ const __dirname = dirname(__filename)
 
 const fastify = Fastify({
   logger: {
-    level: env.NODE_ENV === 'development' ? 'info' : 'warn',
+    level: 'info', // 프로덕션에서도 info 레벨 로그 출력
+    serializers: {
+      req: (req) => ({
+        method: req.method,
+        url: req.url,
+        hostname: req.hostname,
+        remoteAddress: req.ip,
+      }),
+      res: (res) => ({
+        statusCode: res.statusCode,
+      })
+    }
   },
 })
 
@@ -103,6 +115,13 @@ fastify.get('/health', {
     message: 'VibeReview API is running',
     timestamp: new Date().toISOString(),
     version: '1.0.0'
+  }
+})
+
+// Add API logging middleware for all /api routes
+fastify.addHook('preHandler', async (request, reply) => {
+  if (request.url.startsWith('/api/')) {
+    await apiLoggingMiddleware(request, reply)
   }
 })
 
