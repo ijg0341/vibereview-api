@@ -332,7 +332,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async function (request: FastifyRequest, reply) {
+  }, async function (_request: FastifyRequest, reply) {
     return reply.status(501).send({
       success: false,
       error: 'OAuth callback not implemented yet'

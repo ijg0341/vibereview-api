@@ -386,11 +386,13 @@ function generateDailyStats(files: any[], days: number) {
     const date = new Date()
     date.setDate(date.getDate() - i)
     const dateStr = date.toISOString().split('T')[0]
-    stats[dateStr] = { count: 0, size: 0 }
+    if (dateStr) {
+      stats[dateStr] = { count: 0, size: 0 }
+    }
   }
 
   // 파일 데이터로 통계 채우기
-  files.forEach(file => {
+  files.forEach((file: any) => {
     const dateStr = file.created_at.split('T')[0]
     if (stats[dateStr]) {
       stats[dateStr].count += 1

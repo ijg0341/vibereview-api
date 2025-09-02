@@ -12,9 +12,9 @@ export const swaggerOptions = {
     produces: ['application/json'],
     securityDefinitions: {
       bearerAuth: {
-        type: 'apiKey',
+        type: 'apiKey' as const,
         name: 'Authorization',
-        in: 'header',
+        in: 'header' as const,
         description: 'JWT 토큰을 "Bearer {token}" 형식으로 입력'
       }
     },

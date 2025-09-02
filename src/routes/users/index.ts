@@ -224,11 +224,8 @@ export default async function userRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async function (request: FastifyRequest, reply) {
+  }, async function (_request: FastifyRequest, reply) {
     try {
-      const user = (request as AuthenticatedRequest).user
-      const supabase = getSupabase()
-
       // For now, return default settings
       // TODO: Create user_settings table for custom settings
       const defaultSettings = {
@@ -246,7 +243,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
       })
 
     } catch (error) {
-      request.log.error(error, 'Get settings error')
+      _request.log.error(error, 'Get settings error')
       return reply.status(500).send({
         success: false,
         error: 'Internal server error'
@@ -283,7 +280,6 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   }, async function (request: FastifyRequest, reply) {
     try {
-      const user = (request as AuthenticatedRequest).user
       const settings = updateSettingsSchema.parse(request.body)
 
       // TODO: Implement actual settings storage
