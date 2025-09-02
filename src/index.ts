@@ -69,14 +69,17 @@ await fastify.register(cors, {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 })
 
-await fastify.register(rateLimit, {
-  max: env.RATE_LIMIT_MAX,
-  timeWindow: env.RATE_LIMIT_WINDOW,
-  errorResponseBuilder: () => ({
-    success: false,
-    error: 'Rate limit exceeded. Please try again later.',
-  }),
-})
+// Rate limiting (프로덕션 환경만)
+if (env.NODE_ENV === 'production') {
+  await fastify.register(rateLimit, {
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: env.RATE_LIMIT_WINDOW,
+    errorResponseBuilder: () => ({
+      success: false,
+      error: 'Rate limit exceeded. Please try again later.',
+    }),
+  })
+}
 
 await fastify.register(multipart, {
   limits: {
