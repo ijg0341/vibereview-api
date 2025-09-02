@@ -19,9 +19,16 @@ const verifyApiKeySchema = z.object({
 })
 
 export default async function apiKeyRoutes(fastify: FastifyInstance) {
-  // Apply authentication middleware
-  fastify.addHook('preHandler', authMiddleware)
-  fastify.addHook('preHandler', requireTeam())
+  // Apply authentication middleware (except for verify endpoint)
+  fastify.addHook('preHandler', async (request, reply) => {
+    // Skip auth for verify endpoint
+    if (request.url === '/verify' && request.method === 'POST') {
+      return
+    }
+    await authMiddleware(request, reply)
+    if (reply.sent) return
+    await requireTeam()(request, reply)
+  })
 
   // GET /api-keys - API 키 목록 조회
   fastify.get('/', {
@@ -366,7 +373,7 @@ export default async function apiKeyRoutes(fastify: FastifyInstance) {
     schema: {
       tags: ['API Keys'],
       summary: 'API 키 검증',
-      description: 'CLI나 외부 도구에서 API 키의 유효성을 검증합니다',
+      description: 'CLI나 외부 도구에서 API 키의 유효성을 검증합니다. 인증 토큰 없이 호출 가능합니다',
       body: {
         type: 'object',
         required: ['api_key'],

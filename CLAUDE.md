@@ -326,6 +326,52 @@ src/
 11. **CI/CD 파이프라인** - 자동화
 12. **보안 강화** - 엔터프라이즈 대비
 
+## API 문서 관리
+
+### 📚 API 문서 위치
+```
+docs/api/
+├── README.md          # 문서 관리 가이드
+├── auth.md           # 인증 API (5개)
+├── users.md          # 사용자 관리 API (4개)
+├── projects.md       # 프로젝트 관리 API (7개)
+├── upload.md         # 파일 업로드 API (3개)
+├── metadata.md       # 메타데이터 관리 API (5개)
+├── api-keys.md       # API 키 관리 API (5개)
+├── stats.md          # 통계 API (3개)
+└── system.md         # 시스템 API (1개)
+```
+
+### ⚠️ 중요: API 수정 시 문서 업데이트 필수
+**모든 API 코드 수정 시 해당 카테고리의 `.md` 파일도 함께 업데이트해야 합니다:**
+
+#### 수정 케이스별 업데이트 가이드:
+1. **새 엔드포인트 추가** → `docs/api/{category}.md`에 문서 추가
+2. **요청/응답 형식 변경** → curl 예시와 JSON 응답 예시 업데이트  
+3. **에러 코드 변경** → 에러 응답 예시 업데이트
+4. **파라미터 추가/제거** → 요청 파라미터 섹션 업데이트
+5. **인증 방식 변경** → Authorization 헤더 예시 업데이트
+
+#### 문서 품질 유지 규칙:
+- ✅ **실제 동작하는 curl 명령어** 제공
+- ✅ **현실적인 예시 데이터** 사용 (UUID, 타임스탬프 등)
+- ✅ **한국어 설명 + 영어 필드명** 조합
+- ✅ **에러 케이스 포괄적 커버**
+- ✅ **JWT와 API 키 모두 예시** 제공
+
+#### 문서 테스트 방법:
+```bash
+# 문서의 curl 예시를 직접 실행하여 검증
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password"}'
+```
+
+### 📖 추가 문서 접근 방법
+- **Swagger UI**: `http://localhost:3001/docs` (대화형 문서)
+- **Postman**: `VibeReview-API.postman_collection.json` import
+- **테스트 페이지**: `http://localhost:3001/test/` (파일 업로드 특화)
+
 ## 관련 문서
 
 - [메인 프로젝트 계획서](../PROJECT_PLAN.md)
