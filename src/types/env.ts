@@ -5,10 +5,11 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string(),
   SUPABASE_SERVICE_KEY: z.string(),
+  DATABASE_URL: z.string().optional(),
   
   // Server
   PORT: z.coerce.number().default(3001),
-  HOST: z.string().default('localhost'),
+  HOST: z.string().default(process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   
   // Upload

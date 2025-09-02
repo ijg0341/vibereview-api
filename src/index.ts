@@ -46,7 +46,11 @@ await fastify.register(helmet, {
 await fastify.register(cors, {
   origin: env.NODE_ENV === 'development' 
     ? ['http://localhost:3000', 'http://localhost:3001']
-    : true, // Configure for production
+    : [
+        'https://vibe-review.vercel.app',
+        /\.railway\.app$/,
+        /\.vercel\.app$/
+      ],
   credentials: true,
 })
 
