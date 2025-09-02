@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { authMiddleware, type AuthenticatedRequest } from '../../middleware/auth.js'
-import { getSupabase } from '../../utils/supabase.js'
+import { getSupabase, getSupabaseAuth } from '../../utils/supabase.js'
 import { z } from 'zod'
 
 const loginSchema = z.object({
@@ -57,7 +57,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async function (request: FastifyRequest, reply) {
     try {
       const { email, password } = loginSchema.parse(request.body)
-      const supabase = getSupabase()
+      const supabase = getSupabaseAuth() // 인증 전용 클라이언트 사용
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -143,7 +143,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async function (request: FastifyRequest, reply) {
     try {
       const { email, password, full_name } = signupSchema.parse(request.body)
-      const supabase = getSupabase()
+      const supabase = getSupabaseAuth() // 인증 전용 클라이언트 사용
 
       const { data, error } = await supabase.auth.signUp({
         email,
