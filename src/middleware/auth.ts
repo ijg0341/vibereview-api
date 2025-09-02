@@ -46,7 +46,7 @@ export async function authMiddleware(
       }
 
       // Get user profile
-      const { data: profile, error: profileError } = await supabase
+      let { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('team_id, role')
         .eq('id', user.id)
@@ -57,6 +57,20 @@ export async function authMiddleware(
           success: false,
           error: 'Failed to fetch user profile'
         })
+      }
+
+      // 프로필이 없거나 팀이 없으면 기본 설정 생성
+      if (!profile || !profile.team_id) {
+        await ensureUserHasTeam(supabase, user, profile)
+        
+        // 다시 프로필 조회
+        const { data: updatedProfile } = await supabase
+          .from('profiles')
+          .select('team_id, role')
+          .eq('id', user.id)
+          .maybeSingle() as { data: { team_id: string | null; role: 'admin' | 'member' } | null; error: any }
+        
+        profile = updatedProfile
       }
 
       // Attach user info to request
@@ -103,11 +117,26 @@ export async function authMiddleware(
       }
 
       // 사용자 프로필 조회
-      const { data: profile } = await supabase
+      let { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, team_id')
         .eq('id', matchingKey.user_id)
-        .maybeSingle() as { data: { role: 'admin' | 'member' } | null; error: any }
+        .maybeSingle() as { data: { role: 'admin' | 'member'; team_id: string | null } | null; error: any }
+        
+      // 프로필이 없거나 팀이 없으면 기본 설정 생성
+      if (!profile || !profile.team_id) {
+        const userData = { id: matchingKey.user_id, email: undefined }
+        await ensureUserHasTeam(supabase, userData, profile)
+        
+        // 다시 프로필 조회
+        const { data: updatedProfile } = await supabase
+          .from('profiles')
+          .select('role, team_id')
+          .eq('id', matchingKey.user_id)
+          .maybeSingle() as { data: { role: 'admin' | 'member'; team_id: string | null } | null; error: any }
+        
+        profile = updatedProfile
+      }
 
       // 마지막 사용 시간 업데이트 (백그라운드)
       ;(supabase as any)
@@ -117,11 +146,11 @@ export async function authMiddleware(
         .then(() => {})
         .catch(() => {})
 
-      // Attach user info to request
+      // Attach user info to request  
       ;(request as AuthenticatedRequest).user = {
         id: matchingKey.user_id,
         email: undefined, // API 키로는 이메일 정보 없음
-        team_id: matchingKey.team_id,
+        team_id: profile?.team_id || undefined,
         role: profile?.role || undefined,
       }
       ;(request as AuthenticatedRequest).auth_method = 'apikey'
@@ -157,5 +186,60 @@ export function requireRole(role: 'admin' | 'member') {
         error: `Requires ${role} role`
       })
     }
+  }
+}
+
+// 사용자에게 팀이 없으면 기본 팀 생성/배정
+async function ensureUserHasTeam(supabase: any, user: any, profile: any) {
+  try {
+    // 1. 기본 팀 조회 또는 생성
+    let { data: defaultTeam } = await supabase
+      .from('teams')
+      .select('id')
+      .eq('slug', 'default-team')
+      .maybeSingle()
+
+    if (!defaultTeam) {
+      // 기본 팀 생성
+      const { data: newTeam } = await supabase
+        .from('teams')
+        .insert({
+          name: 'Default Team',
+          slug: 'default-team',
+          description: 'Auto-generated default team'
+        })
+        .select()
+        .single()
+      
+      defaultTeam = newTeam
+    }
+
+    // 2. 프로필이 없으면 생성, 있으면 팀 배정
+    if (!profile) {
+      // 새 프로필 생성
+      await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          team_id: defaultTeam.id,
+          role: 'member',
+          is_active: true,
+        })
+    } else {
+      // 기존 프로필에 팀 배정
+      await supabase
+        .from('profiles')
+        .update({
+          team_id: defaultTeam.id,
+          role: profile.role || 'member'
+        })
+        .eq('id', user.id)
+    }
+
+    return defaultTeam.id
+    
+  } catch (error) {
+    console.error('Failed to ensure user has team:', error)
+    throw error
   }
 }
