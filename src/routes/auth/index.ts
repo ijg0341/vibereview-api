@@ -139,6 +139,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         email,
         password,
         options: {
+          emailRedirectTo: undefined,
           data: {
             full_name: full_name || null,
           }
@@ -155,10 +156,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
       return reply.status(201).send({
         success: true,
-        message: 'User created successfully. Please check your email for verification.',
+        message: 'User created successfully. Account is ready to use.',
         data: {
           user: data.user,
           session: data.session,
+          access_token: data.session?.access_token,
+          refresh_token: data.session?.refresh_token,
         }
       })
 
