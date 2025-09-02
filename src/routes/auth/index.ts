@@ -72,11 +72,21 @@ export default async function authRoutes(fastify: FastifyInstance) {
         })
       }
 
+      // Debug logging
+      request.log.info('Login response from Supabase:', {
+        hasUser: !!data.user,
+        hasSession: !!data.session,
+        userId: data.user?.id,
+        userEmail: data.user?.email,
+        sessionId: data.session?.session_id,
+        hasAccessToken: !!data.session?.access_token
+      })
+
       return reply.send({
         success: true,
         data: {
-          user: data.user,
-          session: data.session,
+          user: data.user || {},
+          session: data.session || {},
           access_token: data.session?.access_token,
           refresh_token: data.session?.refresh_token,
         }
