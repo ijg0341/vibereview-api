@@ -5,12 +5,19 @@ import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
+import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
 import { validateEnv } from './types/env.js'
 import { initSupabase } from './utils/supabase.js'
+import { swaggerOptions, swaggerUiOptions } from './swagger.js'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
 // Import routes
+import authRoutes from './routes/auth/index.js'
+import userRoutes from './routes/users/index.js'
+import projectRoutes from './routes/projects/index.js'
+import statsRoutes from './routes/stats/index.js'
 import uploadRoutes from './routes/upload/index.js'
 import metadataRoutes from './routes/metadata/index.js'
 
@@ -27,9 +34,13 @@ const fastify = Fastify({
 // Initialize Supabase
 initSupabase(env)
 
+// Register Swagger
+await fastify.register(swagger, swaggerOptions)
+await fastify.register(swaggerUi, swaggerUiOptions)
+
 // Register plugins
 await fastify.register(helmet, {
-  contentSecurityPolicy: false, // Disable CSP for API
+  contentSecurityPolicy: false, // Disable CSP for API and Swagger
 })
 
 await fastify.register(cors, {
@@ -72,6 +83,10 @@ fastify.get('/health', async () => {
 })
 
 // Register routes
+await fastify.register(authRoutes, { prefix: '/api/auth' })
+await fastify.register(userRoutes, { prefix: '/api/users' })
+await fastify.register(projectRoutes, { prefix: '/api/projects' })
+await fastify.register(statsRoutes, { prefix: '/api/stats' })
 await fastify.register(uploadRoutes, { prefix: '/api/upload' })
 await fastify.register(metadataRoutes, { prefix: '/api/metadata' })
 

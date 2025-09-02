@@ -192,6 +192,8 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
         dbData = insertData
       }
 
+      // Normalization will be triggered automatically by database trigger
+
       // Return success response
       const statusCode = isUpdate ? 200 : 201
       const message = isUpdate 

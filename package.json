@@ -18,6 +18,8 @@
     "@fastify/multipart": "^8.0.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.4",
+    "@fastify/swagger": "^8.15.0",
+    "@fastify/swagger-ui": "^4.2.0",
     "@supabase/supabase-js": "^2.38.0",
     "crypto": "^1.0.1",
     "dotenv": "^17.2.1",
