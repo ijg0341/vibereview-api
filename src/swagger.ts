@@ -60,6 +60,10 @@ export const swaggerOptions = {
       {
         name: 'API Keys',
         description: 'API 키 관리 (CLI 연동용)'
+      },
+      {
+        name: 'Teams',
+        description: '팀 멤버 관리 및 분석'
       }
     ]
   }

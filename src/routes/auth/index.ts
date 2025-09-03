@@ -175,6 +175,23 @@ export default async function authRoutes(fastify: FastifyInstance) {
         })
       }
 
+      // 프로필 자동 생성 (회원가입 시)
+      if (data.user) {
+        const supabaseAdmin = getSupabase() // Service key 클라이언트
+        const defaultUsername = email.split('@')[0] + '_' + data.user.id.substring(0, 4)
+        
+        await supabaseAdmin
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            full_name: full_name || email.split('@')[0],
+            username: defaultUsername,
+            avatar_url: '',
+            role: 'member',
+            is_active: true
+          } as any)
+      }
+
       return reply.status(201).send({
         success: true,
         message: 'User created successfully. Account is ready to use.',

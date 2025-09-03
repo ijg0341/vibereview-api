@@ -42,9 +42,16 @@ export async function validateFile(
   }
   
   // Validate MIME type
+  console.log('🔍 File validation debug:', {
+    filename: file.filename,
+    detectedMimeType: file.mimetype,
+    allowedTypes: options.allowedMimeTypes,
+    isAllowed: options.allowedMimeTypes.includes(file.mimetype)
+  })
+  
   if (!options.allowedMimeTypes.includes(file.mimetype)) {
     throw new FileValidationError(
-      `Invalid file type. Allowed types: ${options.allowedMimeTypes.join(', ')}`
+      `Invalid file type. Detected: "${file.mimetype}". Allowed types: ${options.allowedMimeTypes.join(', ')}`
     )
   }
   
