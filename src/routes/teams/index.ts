@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { authMiddleware, requireTeam, type AuthenticatedRequest } from '../../middleware/auth.js'
 import { getSupabase } from '../../utils/supabase.js'
+import { generateWithClaude } from '../../utils/claude-api.js'
+import { z } from 'zod'
 
 export default async function teamsRoutes(fastify: FastifyInstance) {
   // Apply authentication middleware
@@ -388,23 +390,247 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
     }
   })
 
-  // DEBUG: 테스트 엔드포인트
-  fastify.get('/current/members/:userId/debug', async function (_request: FastifyRequest, reply) {
-    return reply.send({
-      success: true,
-      test_data: {
-        simple_string: "hello",
-        simple_number: 123,
-        simple_object: {
-          name: "test",
-          value: 456
-        },
-        simple_array: [
-          { id: "1", name: "first", value: 100 },
-          { id: "2", name: "second", value: 200 }
-        ]
+  // POST /teams/generate-summary - AI 요약 생성
+  const generateSummarySchema = z.object({
+    userId: z.string().uuid(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    projectTexts: z.array(z.object({
+      projectName: z.string(),
+      userText: z.string()
+    })).optional(),
+    forceRegenerate: z.boolean().optional().default(false)
+  })
+
+  fastify.post('/generate-summary', async function (request: FastifyRequest, reply) {
+    try {
+      const user = (request as AuthenticatedRequest).user
+      const { userId, date, projectTexts, forceRegenerate } = generateSummarySchema.parse(request.body)
+      const supabase = getSupabase()
+
+      // 권한 확인 (같은 팀 멤버만)
+      if (userId !== user.id) {
+        const { data: targetUser } = await supabase
+          .from('profiles')
+          .select('team_id')
+          .eq('id', userId)
+          .single() as { data: any }
+
+        if (!targetUser || targetUser.team_id !== user.team_id) {
+          return reply.status(403).send({
+            success: false,
+            error: 'Access denied. Not in the same team.'
+          })
+        }
       }
-    })
+
+      // 기존 요약 확인
+      if (!forceRegenerate) {
+        const { data: existingSummary } = await supabase
+          .from('daily_ai_summaries')
+          .select('summary_text, created_at')
+          .eq('user_id', userId)
+          .eq('date', date)
+          .single() as { data: any }
+
+        if (existingSummary) {
+          return reply.send({
+            success: true,
+            data: {
+              summary: existingSummary.summary_text,
+              cached: true,
+              created_at: existingSummary.created_at
+            }
+          })
+        }
+      }
+
+      // 프로젝트 텍스트가 없으면 세션 데이터에서 추출
+      let projectData = projectTexts || []
+      if (!projectTexts || projectTexts.length === 0) {
+        // session_summary에서 해당 날짜 데이터 조회
+        const { data: sessions } = await supabase
+          .from('session_summary')
+          .select('id, session_id, project_name')
+          .eq('user_id', userId)
+          .eq('session_date', date) as { data: any }
+
+        request.log.info({
+          sessionsFound: sessions?.length || 0,
+          sampleSession: sessions?.[0],
+          userId,
+          date
+        }, 'Session summary data for AI summary generation')
+
+        if (!sessions || sessions.length === 0) {
+          return reply.send({
+            success: true,
+            data: {
+              summary: "이 날짜에는 작업한 내용이 없습니다.",
+              cached: false
+            }
+          })
+        }
+
+        // session_content에서 사용자 메시지 추출
+        const sessionIds = sessions.map((s: any) => s.id)
+        const { data: contents } = await supabase
+          .from('session_content')
+          .select('session_id, messages')
+          .in('session_id', sessionIds) as { data: any }
+
+        request.log.info({
+          contentFound: contents?.length || 0,
+          sessionIds: sessionIds.slice(0, 3)
+        }, 'Session content data for AI summary generation')
+
+        // 프로젝트별로 사용자 메시지 그룹화
+        const projectGroups: Record<string, string[]> = {}
+        
+        contents?.forEach((content: any) => {
+          const session = sessions.find((s: any) => s.id === content.session_id)
+          const projectName = session?.project_name || 'unknown'
+          
+          if (!projectGroups[projectName]) {
+            projectGroups[projectName] = []
+          }
+
+          // messages.messages 배열에서 user type 메시지만 추출
+          const userMessages = content.messages?.messages
+            ?.filter((msg: any) => msg.type === 'user')
+            ?.map((msg: any) => msg.content)
+            ?.filter((content: any) => typeof content === 'string') || []
+
+          request.log.info({
+            sessionId: content.session_id,
+            projectName,
+            userMessageCount: userMessages.length,
+            sampleMessage: userMessages[0]?.substring(0, 100)
+          }, 'Processing session content for project')
+
+          projectGroups[projectName].push(...userMessages)
+        })
+
+        // projectTexts 형태로 변환
+        projectData = Object.entries(projectGroups).map(([projectName, texts]) => ({
+          projectName,
+          userText: texts.join('\n\n')
+        }))
+
+        request.log.info({
+          projectGroups: Object.keys(projectGroups),
+          projectDataCount: projectData.length,
+          totalTextsLength: projectData.reduce((sum, p) => sum + p.userText.length, 0)
+        }, 'Project data extracted for AI summary')
+      }
+
+      if (projectData.length === 0) {
+        return reply.send({
+          success: true,
+          data: {
+            summary: "이 날짜에는 작업한 내용이 없습니다.",
+            cached: false
+          }
+        })
+      }
+
+      // Claude 프롬프트 생성
+      let analysisPrompt = `
+다음은 한 사용자가 ${date} 날짜에 프로젝트별로 작성한 모든 사용자 메시지들입니다:
+
+${projectData.map((project: any) => {
+  const messages = project.userText.split('\n\n').filter((text: string) => text.trim().length > 0)
+  const totalLength = project.userText.length
+  const messageCount = messages.length
+  
+  return `
+## 프로젝트: ${project.projectName}
+총 ${messageCount}개 프롬프트, 총 ${totalLength}자
+
+${project.userText}
+`
+}).join('\n')}`
+
+      // 프롬프트 길이 제한 (150k 문자)
+      const MAX_CHARS = 150000
+      if (analysisPrompt.length > MAX_CHARS) {
+        analysisPrompt = analysisPrompt.substring(0, MAX_CHARS) + '\n\n... (텍스트가 잘렸습니다)'
+      }
+
+      analysisPrompt += `
+
+위 메시지들을 분석해서 실제로 완료된 작업들을 TODO LIST 형태로 추출해주세요:
+
+## ✅ 오늘 완료한 작업 목록
+
+### 프로젝트별 완료 작업
+${projectData.map((project: any) => `
+**${project.projectName}**
+- [ ] [해당 프로젝트에서 완료한 작업 항목들]
+`).join('\n')}
+
+**지침:**
+1. 각 프롬프트에서 실제로 요청하거나 작업한 구체적인 내용을 추출
+2. "버그 수정", "기능 구현", "코드 리팩토링" 등 명확한 작업 단위로 표현
+3. 하나의 작업을 완료하는데 몇 번의 프롬프트가 사용되었는지 분석
+4. 체크박스(- [ ]) 형태로 TODO 리스트 작성
+5. 각 작업 뒤에 해당 작업에 소요된 프롬프트 횟수와 대화량 표시
+6. 한국어로 작성하되, 기술 용어는 그대로 유지
+
+**예시 형태:**
+- [ ] 사용자 인증 시스템 구현 (프롬프트 5회, 대화량: 많음)
+- [ ] 데이터베이스 스키마 최적화 (프롬프트 2회, 대화량: 보통)
+- [ ] API 응답 시간 개선 (프롬프트 1회, 대화량: 적음)
+
+**대화량 기준:**
+- 적음: 1-2개 프롬프트 또는 총 500자 미만
+- 보통: 3-5개 프롬프트 또는 총 500-2000자  
+- 많음: 6개 이상 프롬프트 또는 총 2000자 이상
+`
+
+      // Claude API 호출
+      request.log.info({ promptLength: analysisPrompt.length, userId, date }, 'Generating AI summary')
+      const summary = await generateWithClaude(analysisPrompt)
+
+      // DB에 저장
+      const { error: saveError } = await supabase
+        .from('daily_ai_summaries')
+        .upsert({
+          user_id: userId,
+          date,
+          summary_text: summary,
+          project_texts: projectData,
+          force_regenerated: forceRegenerate
+        } as any)
+
+      if (saveError) {
+        request.log.error(saveError, 'Failed to save AI summary')
+        // 저장 실패해도 생성된 요약은 반환
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          summary,
+          cached: false,
+          project_count: projectData.length
+        }
+      })
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid input',
+          details: error.issues
+        })
+      }
+
+      request.log.error(error, 'Generate summary error')
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to generate summary'
+      })
+    }
   })
 }
 
