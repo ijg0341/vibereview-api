@@ -119,6 +119,53 @@ export interface Database {
           updated_at?: string
         }
       }
+      daily_stats: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          tool_name: string
+          session_count: number
+          total_prompt_count: number
+          total_prompt_chars: number
+          total_input_tokens: number
+          total_output_tokens: number
+          total_cached_tokens: number
+          total_duration_minutes: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date: string
+          tool_name: string
+          session_count?: number
+          total_prompt_count?: number
+          total_prompt_chars?: number
+          total_input_tokens?: number
+          total_output_tokens?: number
+          total_cached_tokens?: number
+          total_duration_minutes?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          tool_name?: string
+          session_count?: number
+          total_prompt_count?: number
+          total_prompt_chars?: number
+          total_input_tokens?: number
+          total_output_tokens?: number
+          total_cached_tokens?: number
+          total_duration_minutes?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
       api_keys: {
         Row: {
           id: string
@@ -197,6 +244,10 @@ export type UploadedFileUpdate = Database['public']['Tables']['uploaded_files'][
 export type ApiKey = Database['public']['Tables']['api_keys']['Row']
 export type ApiKeyInsert = Database['public']['Tables']['api_keys']['Insert']
 export type ApiKeyUpdate = Database['public']['Tables']['api_keys']['Update']
+
+export type DailyStats = Database['public']['Tables']['daily_stats']['Row']
+export type DailyStatsInsert = Database['public']['Tables']['daily_stats']['Insert']
+export type DailyStatsUpdate = Database['public']['Tables']['daily_stats']['Update']
 
 export type UserRole = Database['public']['Enums']['user_role']
 export type UploadStatus = Database['public']['Enums']['upload_status']

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { authMiddleware, requireTeam, type AuthenticatedRequest } from '../../middleware/auth.js'
 import { getSupabase } from '../../utils/supabase.js'
+import { getPersonalStats, getTeamTotalStats, getTeamRankings, getUserTeamId, validateDate } from '../../utils/stats-aggregator.js'
 
 export default async function statsRoutes(fastify: FastifyInstance) {
   // Apply authentication middleware
@@ -372,6 +373,322 @@ export default async function statsRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: 'Internal server error'
+      })
+    }
+  })
+
+  // GET /stats/dashboard/personal-stats - 개인 일별 통계 (토큰 기반)
+  fastify.get('/dashboard/personal-stats', {
+    schema: {
+      tags: ['Dashboard'],
+      summary: '개인 일별 토큰 통계',
+      description: '사용자의 일별 토큰 사용량, 프롬프트 횟수, 예상 비용 등을 조회합니다',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          date: {
+            type: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: '조회할 날짜 (YYYY-MM-DD 형식, 기본값: 오늘)'
+          }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                date: { type: 'string' },
+                total_tokens: { type: 'number' },
+                input_tokens: { type: 'number' },
+                output_tokens: { type: 'number' },
+                cached_tokens: { type: 'number' },
+                estimated_cost: { type: 'number' },
+                prompt_count: { type: 'number' },
+                message_chars: { type: 'number' },
+                tool_breakdown: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      tool_name: { type: 'string' },
+                      tokens: { type: 'number' },
+                      cost: { type: 'number' },
+                      model: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
+    try {
+      const user = (request as AuthenticatedRequest).user
+      const { date } = request.query as { date?: string }
+      const supabase = getSupabase()
+
+      const queryDate = date || new Date().toISOString().split('T')[0]
+      
+      if (!queryDate || !validateDate(queryDate)) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.'
+        })
+      }
+
+      const personalStats = await getPersonalStats(supabase, user.id, queryDate!)
+
+      return reply.send({
+        success: true,
+        data: personalStats
+      })
+
+    } catch (error) {
+      request.log.error(error, 'Personal stats error')
+      return reply.status(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error'
+      })
+    }
+  })
+
+  // GET /stats/dashboard/team-total-stats - 팀 전체 일별 통계
+  fastify.get('/dashboard/team-total-stats', {
+    schema: {
+      tags: ['Dashboard'],
+      summary: '팀 전체 일별 통계',
+      description: '팀 전체의 일별 토큰 사용량, 프롬프트 횟수, 예상 비용 등을 조회합니다',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          date: {
+            type: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: '조회할 날짜 (YYYY-MM-DD 형식, 기본값: 오늘)'
+          }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                date: { type: 'string' },
+                total_tokens: { type: 'number' },
+                input_tokens: { type: 'number' },
+                output_tokens: { type: 'number' },
+                cached_tokens: { type: 'number' },
+                estimated_cost: { type: 'number' },
+                prompt_count: { type: 'number' },
+                message_chars: { type: 'number' },
+                session_count: { type: 'number' },
+                active_members: { type: 'number' },
+                tool_breakdown: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      tool_name: { type: 'string' },
+                      tokens: { type: 'number' },
+                      cost: { type: 'number' },
+                      model: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
+    try {
+      const user = (request as AuthenticatedRequest).user
+      const { date } = request.query as { date?: string }
+      const supabase = getSupabase()
+
+      const queryDate = date || new Date().toISOString().split('T')[0]
+      
+      if (!queryDate || !validateDate(queryDate)) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.'
+        })
+      }
+
+      const teamId = await getUserTeamId(supabase, user.id)
+      const teamTotalStats = await getTeamTotalStats(supabase, teamId, queryDate!)
+
+      return reply.send({
+        success: true,
+        data: teamTotalStats
+      })
+
+    } catch (error) {
+      request.log.error(error, 'Team total stats error')
+      return reply.status(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error'
+      })
+    }
+  })
+
+  // GET /stats/dashboard/team-rankings - 팀 내 일별 랭킹
+  fastify.get('/dashboard/team-rankings', {
+    schema: {
+      tags: ['Dashboard'],
+      summary: '팀 일별 랭킹',
+      description: '팀 내 사용자들의 다양한 지표별 랭킹 TOP 20을 조회합니다 (토큰, 프롬프트, 메시지량, 평균 프롬프트 길이, 토큰 효율성, 세션 집중도)',
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          date: {
+            type: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: '조회할 날짜 (YYYY-MM-DD 형식, 기본값: 오늘)'
+          }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              properties: {
+                date: { type: 'string' },
+                token_ranking: {
+                  type: 'array',
+                  description: '토큰 사용량 랭킹 TOP 20',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' },
+                      estimated_cost: { type: 'number' }
+                    }
+                  }
+                },
+                prompt_ranking: {
+                  type: 'array',
+                  description: '프롬프트 횟수 랭킹 TOP 20',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' }
+                    }
+                  }
+                },
+                message_ranking: {
+                  type: 'array',
+                  description: '메시지량 랭킹 TOP 20',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' }
+                    }
+                  }
+                },
+                cost_efficiency_ranking: {
+                  type: 'array',
+                  description: '비용 효율성 랭킹 TOP 20 (1달러당 토큰량)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' }
+                    }
+                  }
+                },
+                prompt_quality_ranking: {
+                  type: 'array',
+                  description: '프롬프트 품질 랭킹 TOP 20 (효율적인 프롬프트 능력)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' }
+                    }
+                  }
+                },
+                overall_ai_score_ranking: {
+                  type: 'array',
+                  description: '종합 AI 활용도 랭킹 TOP 20 (전체 AI 사용 능력)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      rank: { type: 'number' },
+                      user_name: { type: 'string' },
+                      user_email: { type: 'string' },
+                      value: { type: 'number' },
+                      formatted_value: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async function (request: FastifyRequest, reply) {
+    try {
+      const user = (request as AuthenticatedRequest).user
+      const { date } = request.query as { date?: string }
+      const supabase = getSupabase()
+
+      const queryDate = date || new Date().toISOString().split('T')[0]
+      
+      if (!queryDate || !validateDate(queryDate)) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.'
+        })
+      }
+
+      const teamId = await getUserTeamId(supabase, user.id)
+      const teamRankings = await getTeamRankings(supabase, teamId, queryDate!)
+
+      return reply.send({
+        success: true,
+        data: teamRankings
+      })
+
+    } catch (error) {
+      request.log.error(error, 'Team rankings error')
+      return reply.status(500).send({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error'
       })
     }
   })
