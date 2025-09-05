@@ -12,6 +12,7 @@ const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   full_name: z.string().optional(),
+  display_name: z.string().optional(), // 프론트엔드 호환성
 })
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -132,7 +133,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
         properties: {
           email: { type: 'string', format: 'email', description: '사용자 이메일' },
           password: { type: 'string', minLength: 6, description: '비밀번호 (최소 6자)' },
-          full_name: { type: 'string', description: '사용자 이름 (선택사항)' }
+          full_name: { type: 'string', description: '사용자 이름 (선택사항)' },
+          display_name: { type: 'string', description: '표시 이름 (프론트엔드 호환성, 선택사항)' }
         }
       },
       response: {
@@ -154,15 +156,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   }, async function (request: FastifyRequest, reply) {
     try {
-      const { email, password, full_name } = signupSchema.parse(request.body)
+      const { email, password, full_name, display_name } = signupSchema.parse(request.body)
       const supabase = getSupabaseAuth() // 인증 전용 클라이언트 사용
+      
+      // full_name 또는 display_name 중 하나를 사용 (프론트엔드 호환성)
+      const userName = full_name || display_name
 
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            full_name: full_name || null,
+            full_name: userName || null,
           }
         }
       })
@@ -184,7 +189,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
           .from('profiles')
           .upsert({
             id: data.user.id,
-            full_name: full_name || email.split('@')[0],
+            full_name: userName || email.split('@')[0],
             username: defaultUsername,
             avatar_url: '',
             role: 'member',
