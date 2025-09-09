@@ -207,6 +207,102 @@ export interface Database {
           updated_at?: string
         }
       }
+      projects: {
+        Row: {
+          id: string
+          team_id: string
+          user_id: string
+          name: string
+          description: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          team_id: string
+          user_id: string
+          name: string
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          team_id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sessions: {
+        Row: {
+          id: string
+          user_id: string
+          team_id: string
+          project_id: string | null
+          tool_name: string
+          session_date: string
+          start_time: string
+          end_time: string | null
+          file_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          team_id: string
+          project_id?: string | null
+          tool_name: string
+          session_date: string
+          start_time: string
+          end_time?: string | null
+          file_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          team_id?: string
+          project_id?: string | null
+          tool_name?: string
+          session_date?: string
+          start_time?: string
+          end_time?: string | null
+          file_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      session_content: {
+        Row: {
+          id: string
+          session_id: string
+          messages: ProcessedMessage[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          messages: ProcessedMessage[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          messages?: ProcessedMessage[]
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -251,3 +347,32 @@ export type DailyStatsUpdate = Database['public']['Tables']['daily_stats']['Upda
 
 export type UserRole = Database['public']['Enums']['user_role']
 export type UploadStatus = Database['public']['Enums']['upload_status']
+
+export type Project = Database['public']['Tables']['projects']['Row']
+export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
+export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
+
+export type Session = Database['public']['Tables']['sessions']['Row']
+export type SessionInsert = Database['public']['Tables']['sessions']['Insert']
+export type SessionUpdate = Database['public']['Tables']['sessions']['Update']
+
+export type SessionContent = Database['public']['Tables']['session_content']['Row']
+export type SessionContentInsert = Database['public']['Tables']['session_content']['Insert']
+export type SessionContentUpdate = Database['public']['Tables']['session_content']['Update']
+
+// ProcessedMessage interface for JSONB messages in session_content table
+export interface ProcessedMessage {
+  sequence: number
+  uuid: string
+  parent_uuid?: string
+  timestamp: string
+  type: 'user' | 'assistant'
+  content: any
+  char_count?: number
+  input_tokens?: number
+  output_tokens?: number
+  has_tool_use?: boolean
+  has_thinking?: boolean
+  is_sidechain: boolean      // 새로 추가 - 서브에이전트 메시지 여부
+  subagent_name?: string     // 새로 추가 - 서브에이전트 이름
+}
