@@ -29,8 +29,20 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const fastify = Fastify({
-  logger: {
-    level: 'info', // 프로덕션에서도 info 레벨 로그 출력
+  logger: env.NODE_ENV === 'development' ? {
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss',
+        ignore: 'pid,hostname',
+        colorize: true,
+        levelFirst: true,
+        messageFormat: '{msg}',
+        singleLine: false
+      }
+    }
+  } : {
+    level: 'info',
     serializers: {
       req: (req) => ({
         method: req.method,

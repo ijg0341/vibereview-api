@@ -5,11 +5,17 @@ import {
   type AuthenticatedRequest,
 } from "../../middleware/auth.js";
 import { getSupabase } from "../../utils/supabase.js";
-import { generateWithClaude } from "../../utils/claude-api.js";
+import { generateWithClaude, generateWithClaudeStream } from "../../utils/claude-api.js";
 import {
   parseSummaryMarkdown,
   serializeParsedData,
 } from "../../utils/summary-parser.js";
+import {
+  extractProjectTexts,
+  generateSummaryPrompt,
+  getPromptStats,
+  type ProjectText,
+} from "../../utils/summary-prompt.js";
 import { z } from "zod";
 
 export default async function teamsRoutes(fastify: FastifyInstance) {
@@ -380,8 +386,12 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
           };
         }
 
-        const detailedSessions: SessionDetail[] = (sessions || []).map(
-          (session: any) => {
+        const detailedSessions: SessionDetail[] = (sessions || [])
+          .filter((session: any) => {
+            const projectName = session.project_name || "unknown";
+            return projectName !== "unknown";
+          })
+          .map((session: any) => {
             const content = sessionContents[session.id] || {}; // session_summary.id로 조회
 
             const sessionDetail: SessionDetail = {
@@ -409,8 +419,7 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             };
 
             return sessionDetail;
-          }
-        );
+          });
 
         // 최종 응답 디버그
         request.log.info(
@@ -518,7 +527,7 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
         }
 
         // 프로젝트 텍스트가 없으면 세션 데이터에서 추출
-        let projectData = projectTexts || [];
+        let projectData: ProjectText[] = projectTexts || [];
         if (!projectTexts || projectTexts.length === 0) {
           // session_summary에서 해당 날짜 데이터 조회
           const { data: sessions } = (await supabase
@@ -562,50 +571,11 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             "Session content data for AI summary generation"
           );
 
-          // 프로젝트별로 사용자 메시지 그룹화
-          const projectGroups: Record<string, string[]> = {};
-
-          contents?.forEach((content: any) => {
-            const session = sessions.find(
-              (s: any) => s.id === content.session_id
-            );
-            const projectName = session?.project_name || "unknown";
-
-            if (!projectGroups[projectName]) {
-              projectGroups[projectName] = [];
-            }
-
-            // messages.messages 배열에서 user type 메시지만 추출
-            const userMessages =
-              content.messages?.messages
-                ?.filter((msg: any) => msg.type === "user")
-                ?.map((msg: any) => msg.content)
-                ?.filter((content: any) => typeof content === "string") || [];
-
-            request.log.info(
-              {
-                sessionId: content.session_id,
-                projectName,
-                userMessageCount: userMessages.length,
-                sampleMessage: userMessages[0]?.substring(0, 100),
-              },
-              "Processing session content for project"
-            );
-
-            projectGroups[projectName].push(...userMessages);
-          });
-
-          // projectTexts 형태로 변환
-          projectData = Object.entries(projectGroups).map(
-            ([projectName, texts]) => ({
-              projectName,
-              userText: texts.join("\n\n"),
-            })
-          );
+          // 공통 함수로 프로젝트 텍스트 추출
+          projectData = extractProjectTexts(sessions, contents || []);
 
           request.log.info(
             {
-              projectGroups: Object.keys(projectGroups),
               projectDataCount: projectData.length,
               totalTextsLength: projectData.reduce(
                 (sum, p) => sum + p.userText.length,
@@ -626,78 +596,19 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Claude 프롬프트 생성
-        let analysisPrompt = `
-다음은 한 사용자가 ${date} 날짜에 프로젝트별로 작성한 모든 사용자 메시지들입니다:
-
-${projectData
-  .map((project: any) => {
-    const messages = project.userText
-      .split("\n\n")
-      .filter((text: string) => text.trim().length > 0);
-    const totalLength = project.userText.length;
-    const messageCount = messages.length;
-
-    return `
-## 프로젝트: ${project.projectName}
-총 ${messageCount}개 프롬프트, 총 ${totalLength}자
-
-${project.userText}
-`;
-  })
-  .join("\n")}`;
-
-        // 프롬프트 길이 제한 (150k 문자)
-        const MAX_CHARS = 150000;
-        if (analysisPrompt.length > MAX_CHARS) {
-          analysisPrompt =
-            analysisPrompt.substring(0, MAX_CHARS) +
-            "\n\n... (텍스트가 잘렸습니다)";
-        }
-
-        analysisPrompt += `
-
-위 메시지들을 분석해서 다음 형태로 응답해주세요:
-
-## 📝 오늘의 업무 요약
-[사용자가 오늘 진행한 핵심 업무들을 500자 이내로 간결하게 요약해주세요. 주요 성과와 작업한 프로젝트들, 해결한 문제들을 중심으로 서술]
-
-## ✅ 완료한 작업 목록
-
-${projectData
-  .map(
-    (project: any) => `### 프로젝트: ${project.projectName}
-- [ ] [해당 프로젝트에서 완료한 구체적인 작업 항목들]`
-  )
-  .join("\n\n")}
-
-**작업 분석 지침:**
-1. 각 프롬프트에서 실제로 요청하거나 작업한 구체적인 내용을 추출
-2. "API 엔드포인트 구현", "버그 수정", "UI 컴포넌트 개발" 등 명확한 작업 단위로 표현
-3. 하나의 작업을 완료하는데 사용된 프롬프트 횟수와 작업 분류, 예상 소요시간을 분석
-4. 체크박스(- [ ]) 형태로 TODO 리스트 작성
-5. 각 작업 뒤에 **(프롬프트 N회, 카테고리, 예상시간)** 형태로 메타데이터 추가
-6. 한국어로 작성하되, 기술 용어는 그대로 유지
-
-**작업 카테고리:**
-- 기능구현: 새로운 기능이나 API 개발
-- 버그수정: 오류나 문제점 해결  
-- 리팩토링: 코드 구조나 성능 개선
-- UI개선: 사용자 인터페이스 수정
-- 문서작업: 문서화나 주석 작성
-- 설정작업: 환경설정이나 도구 설정
-- 테스트: 테스트 코드 작성이나 검증
-
-**응답 예시:**
-- [ ] 사용자 인증 API 엔드포인트 구현 (프롬프트 5회)
-- [ ] 데이터베이스 연결 오류 수정 (프롬프트 2회)  
-- [ ] 대시보드 레이아웃 개선 (프롬프트 3회)
-- [ ] API 문서 업데이트 (프롬프트 1회)
-`;
+        // 공통 함수로 프롬프트 생성
+        const analysisPrompt = generateSummaryPrompt(date, projectData);
+        const stats = getPromptStats(analysisPrompt, projectData);
 
         // Claude API 호출
         request.log.info(
-          { promptLength: analysisPrompt.length, userId, date },
+          {
+            promptLength: stats.promptLength,
+            projectCount: stats.projectCount,
+            totalMessages: stats.totalMessages,
+            userId,
+            date
+          },
           "Generating AI summary"
         );
         const summary = await generateWithClaude(analysisPrompt);
@@ -761,6 +672,212 @@ ${projectData
           success: false,
           error: "Failed to generate summary",
         });
+      }
+    }
+  );
+
+  // POST /teams/generate-summary-stream - AI 요약 생성 (스트리밍)
+  fastify.post(
+    "/generate-summary-stream",
+    async function (request: FastifyRequest, reply) {
+      try {
+        const user = (request as AuthenticatedRequest).user;
+        const { userId, date, projectTexts, forceRegenerate } =
+          generateSummarySchema.parse(request.body);
+        const supabase = getSupabase();
+
+        // 권한 확인
+        if (userId !== user.id) {
+          const { data: targetUser } = (await supabase
+            .from("profiles")
+            .select("team_id")
+            .eq("id", userId)
+            .single()) as { data: any };
+
+          if (!targetUser || targetUser.team_id !== user.team_id) {
+            return reply.status(403).send({
+              success: false,
+              error: "Access denied. Not in the same team.",
+            });
+          }
+        }
+
+        // 기존 요약 확인
+        if (!forceRegenerate) {
+          const { data: existingSummary } = (await supabase
+            .from("daily_ai_summaries")
+            .select("summary_text, created_at")
+            .eq("user_id", userId)
+            .eq("date", date)
+            .single()) as { data: any };
+
+          if (existingSummary) {
+            const parsedData = parseSummaryMarkdown(existingSummary.summary_text);
+
+            // SSE 헤더 설정
+            reply.raw.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            });
+
+            // 캐시된 요약을 청크로 나눠서 스트리밍처럼 전송
+            const summary = existingSummary.summary_text;
+            const chunkSize = 5; // 글자 단위
+            for (let i = 0; i < summary.length; i += chunkSize) {
+              const chunk = summary.substring(i, i + chunkSize);
+              reply.raw.write(`data: ${JSON.stringify({ chunk, type: 'content' })}\n\n`);
+              // 약간의 지연으로 타이핑 효과
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            // 완료 이벤트
+            reply.raw.write(`data: ${JSON.stringify({
+              type: 'done',
+              cached: true,
+              parsed_data: parsedData,
+              created_at: existingSummary.created_at,
+            })}\n\n`);
+
+            reply.raw.end();
+            return;
+          }
+        }
+
+        // 세션 데이터 추출 (공통 로직 사용)
+        let projectData: ProjectText[] = projectTexts || [];
+        if (!projectTexts || projectTexts.length === 0) {
+          const { data: sessions } = (await supabase
+            .from("session_summary")
+            .select("id, session_id, project_name")
+            .eq("user_id", userId)
+            .eq("session_date", date)) as { data: any };
+
+          if (!sessions || sessions.length === 0) {
+            // SSE 헤더 설정
+            reply.raw.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            });
+
+            const message = "이 날짜에는 작업한 내용이 없습니다.";
+            reply.raw.write(`data: ${JSON.stringify({ chunk: message, type: 'content' })}\n\n`);
+            reply.raw.write(`data: ${JSON.stringify({ type: 'done', cached: false })}\n\n`);
+            reply.raw.end();
+            return;
+          }
+
+          const sessionIds = sessions.map((s: any) => s.id);
+          const { data: contents } = (await supabase
+            .from("session_content")
+            .select("session_id, messages")
+            .in("session_id", sessionIds)) as { data: any };
+
+          // 공통 함수로 프로젝트 텍스트 추출
+          projectData = extractProjectTexts(sessions, contents || []);
+        }
+
+        if (projectData.length === 0) {
+          // SSE 헤더 설정
+          reply.raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+
+          const message = "이 날짜에는 작업한 내용이 없습니다.";
+          reply.raw.write(`data: ${JSON.stringify({ chunk: message, type: 'content' })}\n\n`);
+          reply.raw.write(`data: ${JSON.stringify({ type: 'done', cached: false })}\n\n`);
+          reply.raw.end();
+          return;
+        }
+
+        // 공통 함수로 프롬프트 생성
+        const analysisPrompt = generateSummaryPrompt(date, projectData);
+        const stats = getPromptStats(analysisPrompt, projectData);
+
+        // SSE 헤더 설정
+        reply.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Transfer-Encoding': 'chunked',
+          'X-Accel-Buffering': 'no', // nginx 버퍼링 비활성화
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        });
+
+        // TCP no delay 설정 (버퍼링 최소화)
+        reply.raw.socket?.setNoDelay(true);
+
+        let fullSummary = '';
+
+        try {
+          // 스트리밍으로 GPT 호출
+          request.log.info({
+            promptLength: stats.promptLength,
+            projectCount: stats.projectCount,
+            totalMessages: stats.totalMessages,
+          }, 'Starting Claude API streaming...');
+          await generateWithClaudeStream(analysisPrompt, (chunk: string) => {
+            fullSummary += chunk;
+            // SSE 형식으로 전송
+            const data = `data: ${JSON.stringify({ chunk, type: 'content' })}\n\n`;
+            reply.raw.write(data);
+          });
+          request.log.info('Claude API streaming completed');
+        } catch (apiError) {
+          request.log.error(apiError, 'Claude API streaming failed');
+          reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: 'AI 요약 생성 중 오류가 발생했습니다.' })}\n\n`);
+          reply.raw.end();
+          return;
+        }
+
+        // 완료 후 파싱
+        const parsedData = parseSummaryMarkdown(fullSummary);
+        const serializedParsedData = serializeParsedData(parsedData);
+
+        // DB 저장
+        await supabase.from("daily_ai_summaries").upsert({
+          user_id: userId,
+          date,
+          summary_text: fullSummary,
+          project_texts: projectData,
+          force_regenerated: forceRegenerate,
+          parsed_data: JSON.parse(serializedParsedData),
+          daily_summary: parsedData.dailySummary,
+        } as any);
+
+        // 완료 이벤트 전송
+        reply.raw.write(`data: ${JSON.stringify({
+          type: 'done',
+          parsed_data: parsedData,
+          daily_summary: parsedData.dailySummary,
+          tasks_count: parsedData.totalTasks,
+        })}\n\n`);
+
+        reply.raw.end();
+      } catch (error) {
+        request.log.error(error, "Generate summary stream error");
+
+        // 에러 발생 시에도 SSE 헤더가 설정되지 않았다면 설정
+        if (!reply.raw.headersSent) {
+          reply.raw.writeHead(500, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+        }
+
+        reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : 'Failed to generate summary' })}\n\n`);
+        reply.raw.end();
       }
     }
   );
