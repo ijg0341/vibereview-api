@@ -7,7 +7,7 @@ import {
 import { getSupabase } from "../../utils/supabase.js";
 import { generateWithClaude, generateWithClaudeStream } from "../../utils/claude-api.js";
 import {
-  parseSummaryMarkdown,
+  parseSummaryJson,
   serializeParsedData,
 } from "../../utils/summary-parser.js";
 import {
@@ -506,7 +506,7 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
 
           if (existingSummary) {
             // 기존 요약도 파싱하여 구조화된 데이터 제공
-            const parsedData = parseSummaryMarkdown(
+            const parsedData = parseSummaryJson(
               existingSummary.summary_text
             );
 
@@ -517,9 +517,11 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
                 cached: true,
                 created_at: existingSummary.created_at,
                 parsed_data: parsedData,
-                daily_summary: parsedData.dailySummary,
-                tasks_count: parsedData.totalTasks,
-                category_breakdown: parsedData.categoryCounts,
+                daily_summary: parsedData.summary,
+                work_categories: parsedData.work_categories,
+                project_todos: parsedData.project_todos,
+                quality_score: parsedData.quality_score,
+                quality_score_explanation: parsedData.quality_score_explanation,
                 parse_errors: parsedData.errors,
               },
             });
@@ -613,21 +615,21 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
         );
         const summary = await generateWithClaude(analysisPrompt);
 
-        // 마크다운 파싱
-        const parsedData = parseSummaryMarkdown(summary);
+        // JSON 파싱
+        const parsedData = parseSummaryJson(summary);
         const serializedParsedData = serializeParsedData(parsedData);
 
         request.log.info(
           {
-            totalTasks: parsedData.totalTasks,
-            projectCount: parsedData.tasksByProject.length,
+            summary: parsedData.summary,
+            quality_score: parsedData.quality_score,
             parseSuccess: parsedData.parseSuccess,
             errors: parsedData.errors,
           },
           "Summary parsing completed"
         );
 
-        // DB에 저장 (parsed_data와 daily_summary 저장)
+        // DB에 저장 (새로운 필드들 포함)
         const { error: saveError } = await supabase
           .from("daily_ai_summaries")
           .upsert({
@@ -637,7 +639,11 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             project_texts: projectData,
             force_regenerated: forceRegenerate,
             parsed_data: JSON.parse(serializedParsedData),
-            daily_summary: parsedData.dailySummary
+            daily_summary: parsedData.summary,
+            work_categories: parsedData.work_categories,
+            project_todos: parsedData.project_todos,
+            quality_score: parsedData.quality_score,
+            quality_score_explanation: parsedData.quality_score_explanation
           } as any);
 
         if (saveError) {
@@ -652,9 +658,11 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             cached: false,
             project_count: projectData.length,
             parsed_data: parsedData,
-            daily_summary: parsedData.dailySummary,
-            tasks_count: parsedData.totalTasks,
-            category_breakdown: parsedData.categoryCounts,
+            daily_summary: parsedData.summary,
+            work_categories: parsedData.work_categories,
+            project_todos: parsedData.project_todos,
+            quality_score: parsedData.quality_score,
+            quality_score_explanation: parsedData.quality_score_explanation,
             parse_errors: parsedData.errors,
           },
         });
@@ -712,7 +720,7 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             .single()) as { data: any };
 
           if (existingSummary) {
-            const parsedData = parseSummaryMarkdown(existingSummary.summary_text);
+            const parsedData = parseSummaryJson(existingSummary.summary_text);
 
             // SSE 헤더 설정
             reply.raw.writeHead(200, {
@@ -738,6 +746,11 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
               type: 'done',
               cached: true,
               parsed_data: parsedData,
+              daily_summary: parsedData.summary,
+              work_categories: parsedData.work_categories,
+              project_todos: parsedData.project_todos,
+              quality_score: parsedData.quality_score,
+              quality_score_explanation: parsedData.quality_score_explanation,
               created_at: existingSummary.created_at,
             })}\n\n`);
 
@@ -839,7 +852,7 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
         }
 
         // 완료 후 파싱
-        const parsedData = parseSummaryMarkdown(fullSummary);
+        const parsedData = parseSummaryJson(fullSummary);
         const serializedParsedData = serializeParsedData(parsedData);
 
         // DB 저장
@@ -850,15 +863,22 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
           project_texts: projectData,
           force_regenerated: forceRegenerate,
           parsed_data: JSON.parse(serializedParsedData),
-          daily_summary: parsedData.dailySummary,
+          daily_summary: parsedData.summary,
+          work_categories: parsedData.work_categories,
+          project_todos: parsedData.project_todos,
+          quality_score: parsedData.quality_score,
+          quality_score_explanation: parsedData.quality_score_explanation,
         } as any);
 
         // 완료 이벤트 전송
         reply.raw.write(`data: ${JSON.stringify({
           type: 'done',
           parsed_data: parsedData,
-          daily_summary: parsedData.dailySummary,
-          tasks_count: parsedData.totalTasks,
+          daily_summary: parsedData.summary,
+          work_categories: parsedData.work_categories,
+          project_todos: parsedData.project_todos,
+          quality_score: parsedData.quality_score,
+          quality_score_explanation: parsedData.quality_score_explanation,
         })}\n\n`);
 
         reply.raw.end();

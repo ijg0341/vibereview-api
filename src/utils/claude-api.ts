@@ -11,14 +11,14 @@ export async function generateWithClaude(prompt: string): Promise<string> {
   }
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5",
+    model: "gpt-5-mini",
     messages: [
       {
         role: "user",
         content: prompt,
       },
     ],
-    max_completion_tokens: 4000,
+    max_completion_tokens: 10000,
   })
 
   const content = response.choices[0]?.message?.content
@@ -42,7 +42,7 @@ export async function generateWithClaudeStream(
   const startTime = Date.now()
 
   const stream = await openai.chat.completions.create({
-    model: "gpt-5",
+    model: "gpt-5-mini",
     stream: true,
     messages: [
       {
@@ -50,7 +50,7 @@ export async function generateWithClaudeStream(
         content: prompt,
       },
     ],
-    max_completion_tokens: 4000,
+    max_completion_tokens: 10000,
   })
 
   let fullContent = ''
