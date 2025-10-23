@@ -72,8 +72,91 @@ export interface Profile {
   updated_at: string
 }
 
+// Daily Scrum schemas
+export const createDailyScrumSchema = z.object({
+  team_id: z.string().uuid(),
+  meeting_date: z.string().date(),
+  participant_ids: z.array(z.string().uuid()),
+})
+
+export const updateDailyScrumSchema = z.object({
+  status: z.enum(['in_progress', 'completed', 'cancelled']).optional(),
+  notes: z.string().optional(),
+})
+
+export const updateParticipantSchema = z.object({
+  today_plan: z.string().optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'skipped']).optional(),
+})
+
+export const generateSummaryRangeSchema = z.object({
+  userId: z.string().uuid(),
+  startDate: z.string().date(),
+  endDate: z.string().date(),
+  forceRegenerate: z.boolean().optional().default(false),
+})
+
+// Daily Scrum interfaces
+export interface DailyScrum {
+  id: string
+  team_id: string
+  created_by: string
+  meeting_date: string
+  status: 'in_progress' | 'completed' | 'cancelled'
+  started_at: string
+  completed_at?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyScrumParticipant {
+  id: string
+  scrum_id: string
+  user_id: string
+  order_index: number
+  yesterday_summary?: string
+  today_plan?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped'
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyScrumSummary {
+  id: string
+  team_id: string
+  created_by: string
+  meeting_date: string
+  status: 'in_progress' | 'completed' | 'cancelled'
+  started_at: string
+  completed_at?: string
+  notes?: string
+  team_name: string
+  creator_name: string
+  creator_username: string
+  participant_count: number
+  completed_participants: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyScrumWithParticipants extends DailyScrum {
+  participants: (DailyScrumParticipant & {
+    user: {
+      id: string
+      full_name: string
+      username: string
+      avatar_url?: string
+    }
+  })[]
+}
+
 // Type inference helpers
 export type UploadFileInput = z.infer<typeof uploadFileSchema>
 export type UploadMetadata = z.infer<typeof uploadMetadataSchema>
 export type ApiResponse<T = any> = z.infer<typeof apiResponseSchema> & { data?: T }
 export type UploadResponse = z.infer<typeof uploadResponseSchema>
+export type CreateDailyScrumInput = z.infer<typeof createDailyScrumSchema>
+export type UpdateDailyScrumInput = z.infer<typeof updateDailyScrumSchema>
+export type UpdateParticipantInput = z.infer<typeof updateParticipantSchema>
+export type GenerateSummaryRangeInput = z.infer<typeof generateSummaryRangeSchema>
