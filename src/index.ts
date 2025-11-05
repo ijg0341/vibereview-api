@@ -24,6 +24,7 @@ import apiKeyRoutes from './routes/api-keys/index.js'
 import uploadRoutes from './routes/upload/index.js'
 import metadataRoutes from './routes/metadata/index.js'
 import dailyScrumsRoutes from './routes/daily-scrums/index.js'
+import guestRoutes from './routes/guest/index.js'
 
 const env = validateEnv()
 const __filename = fileURLToPath(import.meta.url)
@@ -80,7 +81,7 @@ await fastify.register(cors, {
       ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Guest-User-Id'],
 })
 
 // Rate limiting (프로덕션 환경만)
@@ -152,6 +153,7 @@ await fastify.register(apiKeyRoutes, { prefix: '/api/api-keys' })
 await fastify.register(uploadRoutes, { prefix: '/api/upload' })
 await fastify.register(metadataRoutes, { prefix: '/api/metadata' })
 await fastify.register(dailyScrumsRoutes, { prefix: '/api/daily-scrums' })
+await fastify.register(guestRoutes, { prefix: '/api/guest' })
 
 // Global error handler
 fastify.setErrorHandler((error, request, reply) => {

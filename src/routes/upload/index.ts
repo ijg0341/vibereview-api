@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { authMiddleware, requireTeam, type AuthenticatedRequest } from '../../middleware/auth.js'
+import { authMiddleware, requireTeam } from '../../middleware/auth.js'
+import { guestOrUserAuthMiddleware, type GuestAuthenticatedRequest } from '../../middleware/guest-auth.js'
 import { getSupabase } from '../../utils/supabase.js'
-import { 
-  validateFile, 
-  generateStoragePath, 
-  parseToolName, 
-  FileValidationError 
+import {
+  validateFile,
+  generateStoragePath,
+  parseToolName,
+  FileValidationError
 } from '../../utils/file-validation.js'
 import { z } from 'zod'
 
@@ -23,17 +24,14 @@ const uploadRequestSchema = z.object({
 })
 
 export default async function uploadRoutes(fastify: FastifyInstance) {
-  // Apply authentication middleware to all routes
-  fastify.addHook('preHandler', authMiddleware)
-  fastify.addHook('preHandler', requireTeam())
-
-  // Upload single file
+  // Upload single file - supports both guest and regular users
   fastify.post('/file', {
+    preHandler: [guestOrUserAuthMiddleware],
     schema: {
       tags: ['Upload'],
       summary: '단일 파일 업로드',
-      description: 'AI 도구 세션 파일을 업로드합니다. 중복 파일은 메타데이터만 업데이트됩니다',
-      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+      description: 'AI 도구 세션 파일을 업로드합니다. 정회원(JWT/API 키) 또는 게스트(X-Guest-User-Id 헤더)로 업로드 가능. 중복 파일은 메타데이터만 업데이트됩니다',
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }, { guestAuth: [] }],
       consumes: ['multipart/form-data'],
       response: {
         201: {
@@ -58,7 +56,10 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
     }
   }, async function (request: FastifyRequest, reply) {
     try {
-      const user = (request as AuthenticatedRequest).user
+      const req = request as GuestAuthenticatedRequest
+      const user = req.user
+      const guestUser = req.guestUser
+      const isGuest = !!guestUser
       const supabase = getSupabase()
 
       // Get multipart data
@@ -76,7 +77,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
         if (!field) return undefined
         return typeof field === 'object' && 'value' in field ? field.value : field
       }
-      
+
       const formData = {
         tool_name: getFieldValue(fields.tool_name) as string,
         session_date: getFieldValue(fields.session_date) as string,
@@ -103,12 +104,20 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
       })
 
       // Check for duplicate file (same hash)
-      const { data: existingFile } = await supabase
+      let duplicateQuery = supabase
         .from('uploaded_files')
         .select('id, original_filename, storage_path, upload_status')
-        .eq('team_id', user.team_id!)
         .eq('file_hash', validatedFile.hash)
-        .maybeSingle() as { data: any }
+
+      if (isGuest) {
+        // Guest: check by guest_user_id
+        duplicateQuery = duplicateQuery.eq('guest_user_id', guestUser.id)
+      } else {
+        // Regular user: check by team_id
+        duplicateQuery = duplicateQuery.eq('team_id', user!.team_id!)
+      }
+
+      const { data: existingFile } = await duplicateQuery.maybeSingle() as { data: any }
 
       let storagePath: string
       let shouldUploadToStorage = true
@@ -117,13 +126,16 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
         // File already exists - upsert behavior
         storagePath = existingFile.storage_path
         shouldUploadToStorage = false
-        
+
         request.log.info(`Duplicate file detected: ${existingFile.original_filename}, updating metadata only`)
       } else {
         // New file - generate new storage path
+        const teamOrGuestId = isGuest ? `guest/${guestUser.id}` : user!.team_id!
+        const userId = isGuest ? guestUser.id : user!.id
+
         storagePath = generateStoragePath(
-          user.team_id!,
-          user.id,
+          teamOrGuestId,
+          userId,
           validatedFile.filename,
           validatedFile.hash
         )
@@ -155,17 +167,24 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       if (existingFile) {
         // Update existing file metadata (upsert behavior)
+        const updatePayload: any = {
+          original_filename: validatedFile.filename,
+          tool_name: toolName,
+          session_date: parsedFields.session_date,
+          upload_status: 'uploaded' as const,
+          metadata: parsedFields.metadata,
+          updated_at: new Date().toISOString(),
+        }
+
+        if (isGuest) {
+          updatePayload.guest_user_id = guestUser.id
+        } else {
+          updatePayload.user_id = user!.id
+        }
+
         const { data: updateData, error: dbError } = await (supabase as any)
           .from('uploaded_files')
-          .update({
-            original_filename: validatedFile.filename,
-            user_id: user.id, // Update uploader
-            tool_name: toolName,
-            session_date: parsedFields.session_date,
-            upload_status: 'uploaded' as const,
-            metadata: parsedFields.metadata,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('id', existingFile.id)
           .select()
           .single() as { data: any; error: any }
@@ -183,21 +202,33 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
       } else {
         // Insert new file metadata
+        const insertPayload: any = {
+          original_filename: validatedFile.filename,
+          storage_path: storagePath,
+          file_size: validatedFile.size,
+          mime_type: validatedFile.mimetype,
+          file_hash: validatedFile.hash,
+          tool_name: toolName,
+          session_date: parsedFields.session_date,
+          upload_status: 'uploaded' as const,
+          metadata: parsedFields.metadata,
+        }
+
+        if (isGuest) {
+          // Guest user
+          insertPayload.guest_user_id = guestUser.id
+          insertPayload.team_id = null
+          insertPayload.user_id = null
+        } else {
+          // Regular user
+          insertPayload.team_id = user!.team_id!
+          insertPayload.user_id = user!.id
+          insertPayload.guest_user_id = null
+        }
+
         const { data: insertData, error: dbError } = await (supabase as any)
           .from('uploaded_files')
-          .insert({
-            team_id: user.team_id!,
-            user_id: user.id,
-            original_filename: validatedFile.filename,
-            storage_path: storagePath,
-            file_size: validatedFile.size,
-            mime_type: validatedFile.mimetype,
-            file_hash: validatedFile.hash,
-            tool_name: toolName,
-            session_date: parsedFields.session_date,
-            upload_status: 'uploaded' as const,
-            metadata: parsedFields.metadata,
-          })
+          .insert(insertPayload)
           .select()
           .single() as { data: any; error: any }
 
@@ -269,6 +300,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
   // Batch upload endpoint (for multiple files)
   fastify.post('/batch', {
+    preHandler: [authMiddleware, requireTeam()],
     schema: {
       tags: ['Upload'],
       summary: '배치 파일 업로드',
@@ -340,6 +372,7 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
   // Get upload status
   fastify.get('/status/:fileId', {
+    preHandler: [guestOrUserAuthMiddleware],
     schema: {
       tags: ['Upload'],
       summary: '업로드 상태 확인',
@@ -377,16 +410,25 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
     }
   }, async function (request: FastifyRequest, reply) {
     try {
-      const user = (request as AuthenticatedRequest).user
+      const req = request as GuestAuthenticatedRequest
+      const user = req.user
+      const guestUser = req.guestUser
+      const isGuest = !!guestUser
       const { fileId } = request.params as { fileId: string }
       const supabase = getSupabase()
 
-      const { data, error } = await supabase
+      let statusQuery = supabase
         .from('uploaded_files')
         .select('id, original_filename, upload_status, processing_error, created_at')
         .eq('id', fileId)
-        .eq('team_id', user.team_id!)
-        .maybeSingle() as { data: any; error: any }
+
+      if (isGuest) {
+        statusQuery = statusQuery.eq('guest_user_id', guestUser.id)
+      } else {
+        statusQuery = statusQuery.eq('team_id', user!.team_id!)
+      }
+
+      const { data, error } = await statusQuery.maybeSingle() as { data: any; error: any }
 
       if (error || !data) {
         return reply.status(404).send({
