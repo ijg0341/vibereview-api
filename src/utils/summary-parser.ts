@@ -65,26 +65,81 @@ export function parseSummaryJson(jsonText: string): ParsedSummaryData {
     // JSON 추출 (```json ``` 블록 제거)
     const cleanedJson = extractJsonFromResponse(jsonText);
 
-    // JSON 파싱
-    const parsed = JSON.parse(cleanedJson);
+    // JSON 파싱 (재귀적으로 이중 인코딩된 JSON도 처리)
+    let parsed = JSON.parse(cleanedJson);
+
+    // 만약 parsed 자체가 문자열이면 다시 파싱 시도 (이중 인코딩 처리)
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        // 파싱 실패 시 원본 유지
+      }
+    }
 
     // 1. 요약 추출 (프로젝트별 객체)
-    if (parsed.summary && typeof parsed.summary === 'object' && !Array.isArray(parsed.summary)) {
-      result.summary = parsed.summary;
+    if (parsed.summary) {
+      // summary가 문자열인 경우 파싱 시도
+      if (typeof parsed.summary === 'string') {
+        try {
+          const parsedSummary = JSON.parse(parsed.summary);
+          if (typeof parsedSummary === 'object' && !Array.isArray(parsedSummary)) {
+            result.summary = parsedSummary;
+          } else {
+            result.errors.push('summary 필드를 파싱했지만 객체가 아닙니다.');
+          }
+        } catch {
+          result.errors.push('summary 필드가 JSON 문자열이지만 파싱에 실패했습니다.');
+        }
+      } else if (typeof parsed.summary === 'object' && !Array.isArray(parsed.summary)) {
+        result.summary = parsed.summary;
+      } else {
+        result.errors.push('summary 필드가 없거나 객체가 아닙니다.');
+      }
     } else {
-      result.errors.push('summary 필드가 없거나 객체가 아닙니다.');
+      result.errors.push('summary 필드가 없습니다.');
     }
 
     // 2. 업무 카테고리 추출 및 검증
-    if (parsed.work_categories && typeof parsed.work_categories === 'object') {
-      result.work_categories = validateWorkCategories(parsed.work_categories, result.errors);
+    if (parsed.work_categories) {
+      let workCategories = parsed.work_categories;
+
+      // work_categories가 문자열인 경우 파싱 시도
+      if (typeof workCategories === 'string') {
+        try {
+          workCategories = JSON.parse(workCategories);
+        } catch {
+          result.errors.push('work_categories 필드가 JSON 문자열이지만 파싱에 실패했습니다.');
+        }
+      }
+
+      if (typeof workCategories === 'object' && workCategories !== null) {
+        result.work_categories = validateWorkCategories(workCategories, result.errors);
+      } else {
+        result.errors.push('work_categories 필드가 없거나 객체가 아닙니다.');
+      }
     } else {
       result.errors.push('work_categories 필드가 없거나 객체가 아닙니다.');
     }
 
     // 3. 프로젝트별 TODO 추출 및 검증
-    if (parsed.project_todos && typeof parsed.project_todos === 'object') {
-      result.project_todos = validateProjectTodos(parsed.project_todos, result.errors);
+    if (parsed.project_todos) {
+      let projectTodos = parsed.project_todos;
+
+      // project_todos가 문자열인 경우 파싱 시도
+      if (typeof projectTodos === 'string') {
+        try {
+          projectTodos = JSON.parse(projectTodos);
+        } catch {
+          result.errors.push('project_todos 필드가 JSON 문자열이지만 파싱에 실패했습니다.');
+        }
+      }
+
+      if (typeof projectTodos === 'object' && projectTodos !== null) {
+        result.project_todos = validateProjectTodos(projectTodos, result.errors);
+      } else {
+        result.errors.push('project_todos 필드가 없거나 객체가 아닙니다.');
+      }
     } else {
       result.errors.push('project_todos 필드가 없거나 객체가 아닙니다.');
     }

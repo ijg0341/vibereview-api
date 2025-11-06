@@ -56,10 +56,10 @@ interface SessionContentDB {
   messages: any
 }
 
-interface DailySummaryDB {
-  summary_text: string
-  created_at: string
-}
+// interface DailySummaryDB {
+//   summary_text: string
+//   created_at: string
+// }
 
 export default async function guestRoutes(fastify: FastifyInstance) {
   // POST /guest/register-or-get - 게스트 등록 또는 조회
@@ -545,45 +545,91 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         })
       }
 
-      // 기존 요약 확인
+      // 기존 요약 확인 (guest_user_id 사용)
       if (!forceRegenerate) {
-        const { data: existingSummary } = await supabase
+        request.log.info({ userId, date }, '[Cache Check] Checking for existing summary')
+
+        const { data: existingSummary, error: cacheError } = await supabase
           .from('daily_ai_summaries')
-          .select('summary_text, created_at')
-          .eq('user_id', userId)
+          .select('summary_text, created_at, daily_summary, work_categories, project_todos, quality_score, quality_score_explanation, parsed_data')
+          .eq('guest_user_id', userId)
           .eq('date', date)
-          .maybeSingle() as { data: DailySummaryDB | null; error: any }
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle() as any
+
+        if (cacheError) {
+          request.log.error({ error: cacheError, userId, date }, '[Cache Error] Failed to check existing summary')
+        }
 
         if (existingSummary) {
-          const parsedData = parseSummaryJson(existingSummary.summary_text)
+          request.log.info({
+            userId,
+            date,
+            cached_at: existingSummary.created_at
+          }, '[Cache Hit] Returning cached summary')
+
+          // daily_summary는 JSON 문자열이므로 파싱
+          let dailySummary = {}
+          try {
+            dailySummary = existingSummary.daily_summary ? JSON.parse(existingSummary.daily_summary as string) : {}
+          } catch (e) {
+            dailySummary = {}
+          }
+
           return reply.send({
             success: true,
             data: {
               summary: existingSummary.summary_text,
               cached: true,
               created_at: existingSummary.created_at,
-              parsed_data: parsedData,
-              daily_summary: parsedData.summary,
-              work_categories: parsedData.work_categories,
-              project_todos: parsedData.project_todos,
-              quality_score: parsedData.quality_score,
-              quality_score_explanation: parsedData.quality_score_explanation,
-              parse_errors: parsedData.errors,
+              parsed_data: existingSummary.parsed_data,
+              daily_summary: dailySummary,
+              work_categories: existingSummary.work_categories,
+              project_todos: existingSummary.project_todos,
+              quality_score: existingSummary.quality_score,
+              quality_score_explanation: existingSummary.quality_score_explanation,
+              parse_errors: [],
             },
           })
+        } else {
+          request.log.info({ userId, date }, '[Cache Miss] No cached summary found, generating new one')
         }
+      } else {
+        request.log.info({ userId, date }, '[Force Regenerate] Skipping cache check')
       }
 
       // 프로젝트 텍스트가 없으면 세션 데이터에서 추출
       let projectData: ProjectText[] = projectTexts || []
       if (!projectTexts || projectTexts.length === 0) {
-        // 게스트의 세션 조회
+        // 1. 먼저 게스트의 업로드 파일 조회
+        const { data: files, error: filesError } = await supabase
+          .from('uploaded_files')
+          .select('id, created_at')
+          .eq('guest_user_id', userId)
+          .gte('created_at', `${date}T00:00:00`)
+          .lt('created_at', `${date}T23:59:59`)
+
+        if (filesError) {
+          request.log.error({ error: filesError }, 'Failed to query uploaded files')
+        }
+
+        if (!files || files.length === 0) {
+          return reply.send({
+            success: true,
+            data: {
+              summary: '이 날짜에는 작업한 내용이 없습니다.',
+              cached: false,
+            },
+          })
+        }
+
+        // 2. 파일 ID로 세션 조회
+        const fileIds = files.map((f: { id: string }) => f.id)
         const { data: sessions } = await supabase
           .from('sessions')
           .select('id, session_id, working_directory')
-          .eq('guest_user_id', userId)
-          .gte('start_timestamp', `${date}T00:00:00`)
-          .lt('start_timestamp', `${date}T23:59:59`)
+          .in('file_id', fileIds)
 
         if (!sessions || sessions.length === 0) {
           return reply.send({
@@ -595,14 +641,14 @@ export default async function guestRoutes(fastify: FastifyInstance) {
           })
         }
 
-        // session_content에서 사용자 메시지 추출
+        // 3. session_content에서 사용자 메시지 추출
         const sessionIds = sessions.map((s: any) => s.id)
         const { data: contents } = await supabase
           .from('session_content')
           .select('session_id, messages')
           .in('session_id', sessionIds)
 
-        // 프로젝트명을 working_directory에서 추출
+        // 4. 프로젝트명을 working_directory에서 추출
         const sessionsWithProject = sessions.map((s: any) => ({
           ...s,
           project_name: s.working_directory ? s.working_directory.split('/').pop() : 'Unknown Project'
@@ -637,17 +683,29 @@ export default async function guestRoutes(fastify: FastifyInstance) {
       const parsedData = parseSummaryJson(summary)
       const serializedParsedData = serializeParsedData(parsedData)
 
-      // DB에 저장
+      // DB에 저장 (guest_user_id 사용)
+      // 먼저 기존 summary 삭제 후 insert (upsert 대신)
+      const { error: deleteError } = await supabase
+        .from('daily_ai_summaries')
+        .delete()
+        .eq('guest_user_id', userId)
+        .eq('date', date)
+
+      if (deleteError) {
+        request.log.warn({ error: deleteError }, '[Cache] Failed to delete old summary, continuing...')
+      }
+
       const { error: saveError } = await supabase
         .from('daily_ai_summaries')
-        .upsert({
-          user_id: userId,
+        .insert({
+          guest_user_id: userId,
+          user_id: null,
           date,
           summary_text: summary,
           project_texts: projectData,
           force_regenerated: forceRegenerate,
           parsed_data: JSON.parse(serializedParsedData),
-          daily_summary: parsedData.summary,
+          daily_summary: JSON.stringify(parsedData.summary),  // 객체를 JSON 문자열로 변환
           work_categories: parsedData.work_categories,
           project_todos: parsedData.project_todos,
           quality_score: parsedData.quality_score,
@@ -655,7 +713,15 @@ export default async function guestRoutes(fastify: FastifyInstance) {
         } as any)
 
       if (saveError) {
-        request.log.error(saveError, 'Failed to save AI summary')
+        request.log.error({
+          error: saveError,
+          code: saveError.code,
+          message: saveError.message,
+          details: saveError.details,
+          hint: saveError.hint
+        }, 'Failed to save AI summary')
+      } else {
+        request.log.info({ userId, date }, '[Cache Saved] Successfully saved summary to cache')
       }
 
       return reply.send({

@@ -65,8 +65,19 @@ export function generateSummaryPrompt(
   projectData: ProjectText[]
 ): string {
   let analysisPrompt = `
-당신은 개발자의 AI 코딩 세션을 분석하는 전문가입니다.
-아래 세션 데이터를 분석하여 **JSON 형식으로만** 응답해주세요.
+🚨 응답 형식: 반드시 아래 JSON 구조만 사용하세요. 다른 필드 추가 금지.
+
+필수 필드 (오직 이 5개만):
+- summary (객체, 문자열 아님!)
+- work_categories (7개 카테고리를 가진 객체)
+- project_todos (객체)
+- quality_score (숫자)
+- quality_score_explanation (문자열)
+
+❌ 금지: "date", "projects", "dbChecks", "apis", "features", "actionsTaken", "overview", "done", "notes" 등의 필드 추가 금지
+❌ 금지: summary를 문자열로 만들지 마세요 - 반드시 객체여야 합니다
+❌ 금지: work_categories를 배열로 만들지 마세요 - 반드시 객체여야 합니다
+❌ 금지: 모든 응답은 한글로 작성해야 합니다
 
 # 세션 데이터
 날짜: ${date}
@@ -147,36 +158,115 @@ quality_score_explanation에는 어떤 기준을 충족/미충족했는지 구�
 
 ---
 
-# 응답 형식 (JSON만 출력, 설명 금지)
+# 🚨 정확한 응답 형식 (위반 시 거부됨)
 
+반드시 이 구조만 사용하세요.
+
+## ❌ 잘못된 예시 (절대 이렇게 하지 마세요):
+
+\`\`\`json
+// 🚫 이런 식으로 응답하면 안 됩니다!
 {
   "summary": {
-    "프로젝트-슬러그": "해당 프로젝트의 전체적인 작업 총평 (100-150자)"
+    "newways-staging": {
+      "overview": "...",  // ❌ 객체로 만들면 안 됨! 문자열이어야 함!
+      "done": [...],      // ❌ 배열 추가하면 안 됨!
+      "notes": [...]      // ❌ 추가 필드 금지!
+    }
   },
   "work_categories": {
-    "planning": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "frontend": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "backend": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "qa": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "devops": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "research": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" },
-    "other": { "minutes": 0, "percentage": 0, "description": "작업 내용 또는 null" }
+    "planning": ["작업1", "작업2"],  // ❌ 배열로 만들면 안 됨!
+    "frontend": ["작업3"]            // ❌ 객체여야 합니다!
   },
   "project_todos": {
-    "프로젝트-슬러그": {
-      "project_id": "추정 불가시 null",
-      "project_name": "프로젝트명",
+    "프로젝트-1": [                 // ❌ 배열로 만들면 안 됨!
+      "할일 1",                       // ❌ 객체여야 합니다!
+      "할일 2"
+    ]
+  }
+}
+\`\`\`
+
+🚫 **특히 주의: project_todos**
+- project_todos의 각 프로젝트는 **반드시 객체**여야 합니다
+- 배열이 아닙니다!
+- 객체 안에 project_id, project_name, todos(배열) 필드가 있어야 합니다
+\`\`\`json
+// ❌ 잘못된 형태
+"project_todos": {
+  "프로젝트-1": ["할일1", "할일2"]  // 이렇게 배열로 하면 안 됨!
+}
+
+// ✅ 올바른 형태
+"project_todos": {
+  "프로젝트-1": {
+    "project_id": null,
+    "project_name": "프로젝트명",
+    "todos": [
+      { "text": "할일1", "category": "backend" },
+      { "text": "할일2", "category": "frontend" }
+    ]
+  }
+}
+\`\`\`
+
+## ✅ 올바른 예시 (반드시 이렇게 응답하세요):
+
+\`\`\`json
+{
+  "summary": {
+    "프로젝트-1": "관리자 사용자 관리 기능 개발. DB 확인 후 백엔드 API(통계/리스트/상세/수정) 구현하고 프론트엔드 UI(필터/테이블/상세페이지) 완성. CSV 다운로드 추가.",
+    "프로젝트-2": "정책 요청 기능 문서화 및 백엔드 API 구현. 프론트엔드 탭 UI 추가하고 테스트 데이터 삽입하여 검증 완료."
+  },
+  "work_categories": {
+    "planning": { "minutes": 45, "percentage": 15, "description": "US-1~5 요구사항 문서 작성 및 개발 플로우 정의" },
+    "frontend": { "minutes": 90, "percentage": 30, "description": "관리자 페이지 UI 구현(통계 카드, 필터, 테이블, 상세페이지, CSV 다운로드 버튼)" },
+    "backend": { "minutes": 120, "percentage": 40, "description": "사용자 통계/리스트/상세 조회 및 수정 API 구현, CSV export 엔드포인트 추가" },
+    "qa": { "minutes": 30, "percentage": 10, "description": "테스트 데이터 삽입 및 주요 API 수동 검증" },
+    "devops": { "minutes": 15, "percentage": 5, "description": "개발 서버 재시작 및 환경 설정" },
+    "research": { "minutes": 0, "percentage": 0, "description": null },
+    "other": { "minutes": 0, "percentage": 0, "description": null }
+  },
+  "project_todos": {
+    "프로젝트-1": {                    // ← 주의: 프로젝트명이 key입니다
+      "project_id": null,              // ← 반드시 포함 (추정 불가시 null)
+      "project_name": "뉴웨이즈 관리자",  // ← 반드시 포함 (프로젝트 이름)
+      "todos": [                        // ← 반드시 포함 (배열)
+        { "text": "구독 관리 API 구현 및 성능 최적화", "category": "backend" },
+        { "text": "구독 탭 UI 연결 및 테스트", "category": "frontend" },
+        { "text": "대용량 CSV 스트리밍 처리 구현", "category": "backend" }
+      ]
+    },
+    "프로젝트-2": {                    // ← 프로젝트가 여러 개면 각각 객체로 추가
+      "project_id": null,
+      "project_name": "다른 프로젝트",
       "todos": [
-        {
-          "text": "구체적인 작업 내용",
-          "category": "frontend"
-        }
+        { "text": "테스트 작성", "category": "qa" }
       ]
     }
   },
-  "quality_score": 0.85,
-  "quality_score_explanation": "점수에 대한 근거 설명 (200자 이내)"
+  "quality_score": 0.75,
+  "quality_score_explanation": "명확한 지시사항과 컨텍스트 제공(+40점). 구체적인 예시는 부족(-20점). 출력 형식 명시(+20점). 단계적 접근 부재(-20점). 총 60점으로 0.6점."
 }
+\`\`\`
+
+🔒 엄격한 규칙:
+1. ✅ 오직 5개 필드만: summary, work_categories, project_todos, quality_score, quality_score_explanation
+2. ✅ summary = 객체 (key: 프로젝트명, value: 총평 문자열 - 100~150자)
+3. ✅ work_categories = 정확히 7개 카테고리 (planning/frontend/backend/qa/devops/research/other)
+4. ✅ 각 카테고리는 minutes(숫자), percentage(숫자), description(문자열 또는 null) 포함
+5. ✅ **[중요]** project_todos는 **객체**입니다 (배열 아님!)
+   - 각 프로젝트는 반드시 { project_id, project_name, todos } 형태의 **객체**
+   - todos는 { text, category } 객체들의 **배열**
+   - 잘못된 예: "project_todos": { "프로젝트": ["할일1", "할일2"] } ❌
+   - 올바른 예: "project_todos": { "프로젝트": { "project_id": null, "project_name": "...", "todos": [{...}] } } ✅
+6. ✅ 모든 필드 필수 (생략 불가)
+7. ✅ 모든 텍스트는 한글로 작성
+8. ✅ quality_score는 0.0 ~ 1.0 사이의 소수점 숫자 (88 같은 정수 아님!)
+9. ❌ 추가 필드 절대 금지 (date, projects, overview, done, notes 등)
+10. ❌ 마크다운 형식 금지, JSON만 출력
+
+위 세션 데이터를 분석하여 오직 JSON만 출력하세요:
 `;
 
   // 프롬프트 길이 제한 (150k 문자)

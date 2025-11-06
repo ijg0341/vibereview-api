@@ -502,7 +502,9 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             .select("summary_text, created_at")
             .eq("user_id", userId)
             .eq("date", date)
-            .single()) as { data: any };
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()) as { data: any };
 
           if (existingSummary) {
             // 기존 요약도 파싱하여 구조화된 데이터 제공
@@ -629,11 +631,22 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
           "Summary parsing completed"
         );
 
-        // DB에 저장 (새로운 필드들 포함)
+        // DB에 저장 (먼저 기존 summary 삭제 후 insert)
+        const { error: deleteError } = await supabase
+          .from("daily_ai_summaries")
+          .delete()
+          .eq("user_id", userId)
+          .eq("date", date);
+
+        if (deleteError) {
+          request.log.warn({ error: deleteError }, "Failed to delete old summary, continuing...");
+        }
+
         const { error: saveError } = await supabase
           .from("daily_ai_summaries")
-          .upsert({
+          .insert({
             user_id: userId,
+            guest_user_id: null,
             date,
             summary_text: summary,
             project_texts: projectData,
@@ -717,7 +730,9 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
             .select("summary_text, created_at")
             .eq("user_id", userId)
             .eq("date", date)
-            .single()) as { data: any };
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()) as { data: any };
 
           if (existingSummary) {
             const parsedData = parseSummaryJson(existingSummary.summary_text);
@@ -855,9 +870,20 @@ export default async function teamsRoutes(fastify: FastifyInstance) {
         const parsedData = parseSummaryJson(fullSummary);
         const serializedParsedData = serializeParsedData(parsedData);
 
-        // DB 저장
-        await supabase.from("daily_ai_summaries").upsert({
+        // DB 저장 (먼저 기존 summary 삭제 후 insert)
+        const { error: deleteError } = await supabase
+          .from("daily_ai_summaries")
+          .delete()
+          .eq("user_id", userId)
+          .eq("date", date);
+
+        if (deleteError) {
+          request.log.warn({ error: deleteError }, "Failed to delete old summary, continuing...");
+        }
+
+        await supabase.from("daily_ai_summaries").insert({
           user_id: userId,
+          guest_user_id: null,
           date,
           summary_text: fullSummary,
           project_texts: projectData,
