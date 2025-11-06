@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { getSupabase } from '../../utils/supabase.js'
+import { generateWithClaude } from '../../utils/claude-api.js'
+import { parseSummaryJson, serializeParsedData } from '../../utils/summary-parser.js'
+import { extractProjectTexts, generateSummaryPrompt, getPromptStats, type ProjectText } from '../../utils/summary-prompt.js'
 import { z } from 'zod'
 
 const registerSchema = z.object({
@@ -27,13 +30,16 @@ interface GuestUserDB {
 }
 
 interface SessionDB {
+  id: string
   session_id: string
   start_timestamp?: string
   end_timestamp?: string
   total_messages?: number
-  total_tokens?: number
-  prompt_count?: number
-  project_name?: string
+  total_input_tokens?: number
+  total_output_tokens?: number
+  user_messages_count?: number
+  working_directory?: string
+  tool_name?: string
 }
 
 interface FileDB {
@@ -45,15 +51,14 @@ interface FileDB {
   created_at: string
 }
 
-interface SessionMessageDB {
-  message_type: string
-  content: string
-  timestamp: string
-  message_uuid: string
-  sequence: number
-  is_sidechain?: boolean
-  subagent_name?: string
-  subagent_type?: string
+interface SessionContentDB {
+  session_id: string
+  messages: any
+}
+
+interface DailySummaryDB {
+  summary_text: string
+  created_at: string
 }
 
 export default async function guestRoutes(fastify: FastifyInstance) {
@@ -299,15 +304,29 @@ export default async function guestRoutes(fastify: FastifyInstance) {
                   items: {
                     type: 'object',
                     properties: {
-                      session_id: { type: 'string', format: 'uuid' },
-                      file_id: { type: 'string', format: 'uuid' },
+                      id: { type: 'string' },
+                      session_id: { type: 'string', nullable: true },
+                      file_id: { type: 'string' },
+                      filename: { type: 'string' },
                       file_name: { type: 'string' },
                       tool_name: { type: 'string' },
                       file_size: { type: 'integer' },
                       upload_status: { type: 'string' },
-                      created_at: { type: 'string', format: 'date-time' },
-                      start_timestamp: { type: 'string', format: 'date-time', nullable: true },
-                      end_timestamp: { type: 'string', format: 'date-time', nullable: true }
+                      upload_time: { type: 'string' },
+                      created_at: { type: 'string' },
+                      start_timestamp: { type: 'string', nullable: true },
+                      end_timestamp: { type: 'string', nullable: true },
+                      start_time: { type: 'string', nullable: true },
+                      end_time: { type: 'string', nullable: true },
+                      total_messages: { type: 'integer' },
+                      total_tokens: { type: 'integer' },
+                      prompt_count: { type: 'integer' },
+                      project: { type: 'string' },
+                      project_name: { type: 'string' },
+                      session_content: {
+                        type: 'object',
+                        additionalProperties: true
+                      }
                     }
                   }
                 }
@@ -370,22 +389,34 @@ export default async function guestRoutes(fastify: FastifyInstance) {
       const sessions = []
       for (const file of files || []) {
         // 세션 기본 정보 조회
-        const { data: session } = await supabase
+        const { data: session, error: sessionError } = await supabase
           .from('sessions')
-          .select('session_id, start_timestamp, end_timestamp, total_messages, total_tokens, prompt_count, project_name')
+          .select('id, session_id, start_timestamp, end_timestamp, total_messages, total_input_tokens, total_output_tokens, user_messages_count, working_directory, tool_name')
           .eq('file_id', file.id)
           .maybeSingle() as { data: SessionDB | null; error: any }
 
-        // 세션 메시지 내용 조회
-        let sessionMessages: SessionMessageDB[] = []
-        if (session) {
-          const { data: messages } = await supabase
-            .from('session_content')
-            .select('*')
-            .eq('session_id', session.session_id)
-            .order('sequence', { ascending: true }) as { data: SessionMessageDB[] | null; error: any }
+        if (sessionError) {
+          request.log.error({ error: sessionError, fileId: file.id }, 'Failed to query session')
+        }
 
-          sessionMessages = messages || []
+        // 세션 메시지 내용 조회
+        let sessionMessages: any[] = []
+        if (session) {
+          const { data: content, error: contentError } = await supabase
+            .from('session_content')
+            .select('messages')
+            .eq('session_id', session.id)
+            .maybeSingle() as { data: SessionContentDB | null; error: any }
+
+          if (contentError) {
+            request.log.error({ error: contentError, sessionId: session.id }, 'Failed to query session content')
+          }
+
+          // messages는 { messages: [...] } 형태의 JSONB 객체
+          // 실제 배열은 messages.messages에 있음
+          if (content?.messages) {
+            sessionMessages = (content.messages as any).messages || content.messages || []
+          }
         }
 
         // 시작/종료 시간 포맷팅
@@ -395,13 +426,18 @@ export default async function guestRoutes(fastify: FastifyInstance) {
           return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
         }
 
+        // Extract project name from working_directory
+        const projectName = session?.working_directory
+          ? session.working_directory.split('/').pop() || 'No Project'
+          : 'No Project'
+
         sessions.push({
           id: file.id,
           session_id: session?.session_id || null,
           file_id: file.id,
           filename: file.original_filename,
           file_name: file.original_filename,
-          tool_name: file.tool_name,
+          tool_name: file.tool_name || session?.tool_name || 'claude-code',
           file_size: file.file_size,
           upload_status: file.upload_status,
           upload_time: file.created_at,
@@ -411,21 +447,12 @@ export default async function guestRoutes(fastify: FastifyInstance) {
           start_time: formatTime(session?.start_timestamp ?? null),
           end_time: formatTime(session?.end_timestamp ?? null),
           total_messages: session?.total_messages || 0,
-          total_tokens: session?.total_tokens || 0,
-          prompt_count: session?.prompt_count || 0,
-          project: session?.project_name || 'No Project',
-          project_name: session?.project_name || 'No Project',
+          total_tokens: (session?.total_input_tokens || 0) + (session?.total_output_tokens || 0),
+          prompt_count: session?.user_messages_count || 0,
+          project: projectName,
+          project_name: projectName,
           session_content: {
-            messages: sessionMessages.map(msg => ({
-              type: msg.message_type,
-              content: msg.content,
-              timestamp: msg.timestamp,
-              uuid: msg.message_uuid,
-              sequence: msg.sequence,
-              is_sidechain: msg.is_sidechain || false,
-              subagent_name: msg.subagent_name || null,
-              subagent_type: msg.subagent_type || null
-            }))
+            messages: sessionMessages
           }
         })
       }
@@ -450,6 +477,215 @@ export default async function guestRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: 'Internal server error'
+      })
+    }
+  })
+
+  // POST /guest/generate-summary - 게스트용 AI 요약 생성 (토큰 불필요)
+  const generateSummarySchema = z.object({
+    userId: z.string().uuid(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    projectTexts: z.array(z.object({
+      projectName: z.string(),
+      userText: z.string(),
+    })).optional(),
+    forceRegenerate: z.boolean().optional().default(false),
+  })
+
+  fastify.post<{ Body: any }>('/generate-summary', {
+    schema: {
+      tags: ['Guest'],
+      summary: '게스트 AI 요약 생성',
+      description: '게스트 사용자의 세션 AI 요약을 생성합니다 (토큰 불필요)',
+      body: {
+        type: 'object',
+        required: ['userId', 'date'],
+        properties: {
+          userId: { type: 'string', format: 'uuid', description: '게스트 사용자 ID' },
+          date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: '날짜 (YYYY-MM-DD)' },
+          projectTexts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                projectName: { type: 'string' },
+                userText: { type: 'string' }
+              }
+            }
+          },
+          forceRegenerate: { type: 'boolean', default: false }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: { type: 'object', additionalProperties: true }
+          }
+        }
+      }
+    }
+  }, async function (request, reply) {
+    try {
+      const { userId, date, projectTexts, forceRegenerate } = generateSummarySchema.parse(request.body)
+      const supabase = getSupabase()
+
+      // 게스트 사용자 확인
+      const { data: guestUser, error: guestError } = await supabase
+        .from('guest_users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (guestError || !guestUser) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Guest user not found'
+        })
+      }
+
+      // 기존 요약 확인
+      if (!forceRegenerate) {
+        const { data: existingSummary } = await supabase
+          .from('daily_ai_summaries')
+          .select('summary_text, created_at')
+          .eq('user_id', userId)
+          .eq('date', date)
+          .maybeSingle() as { data: DailySummaryDB | null; error: any }
+
+        if (existingSummary) {
+          const parsedData = parseSummaryJson(existingSummary.summary_text)
+          return reply.send({
+            success: true,
+            data: {
+              summary: existingSummary.summary_text,
+              cached: true,
+              created_at: existingSummary.created_at,
+              parsed_data: parsedData,
+              daily_summary: parsedData.summary,
+              work_categories: parsedData.work_categories,
+              project_todos: parsedData.project_todos,
+              quality_score: parsedData.quality_score,
+              quality_score_explanation: parsedData.quality_score_explanation,
+              parse_errors: parsedData.errors,
+            },
+          })
+        }
+      }
+
+      // 프로젝트 텍스트가 없으면 세션 데이터에서 추출
+      let projectData: ProjectText[] = projectTexts || []
+      if (!projectTexts || projectTexts.length === 0) {
+        // 게스트의 세션 조회
+        const { data: sessions } = await supabase
+          .from('sessions')
+          .select('id, session_id, working_directory')
+          .eq('guest_user_id', userId)
+          .gte('start_timestamp', `${date}T00:00:00`)
+          .lt('start_timestamp', `${date}T23:59:59`)
+
+        if (!sessions || sessions.length === 0) {
+          return reply.send({
+            success: true,
+            data: {
+              summary: '이 날짜에는 작업한 내용이 없습니다.',
+              cached: false,
+            },
+          })
+        }
+
+        // session_content에서 사용자 메시지 추출
+        const sessionIds = sessions.map((s: any) => s.id)
+        const { data: contents } = await supabase
+          .from('session_content')
+          .select('session_id, messages')
+          .in('session_id', sessionIds)
+
+        // 프로젝트명을 working_directory에서 추출
+        const sessionsWithProject = sessions.map((s: any) => ({
+          ...s,
+          project_name: s.working_directory ? s.working_directory.split('/').pop() : 'Unknown Project'
+        }))
+
+        projectData = extractProjectTexts(sessionsWithProject, contents || [])
+      }
+
+      if (projectData.length === 0) {
+        return reply.send({
+          success: true,
+          data: {
+            summary: '이 날짜에는 작업한 내용이 없습니다.',
+            cached: false,
+          },
+        })
+      }
+
+      // AI 요약 생성
+      const analysisPrompt = generateSummaryPrompt(date, projectData)
+      const stats = getPromptStats(analysisPrompt, projectData)
+
+      request.log.info({
+        promptLength: stats.promptLength,
+        projectCount: stats.projectCount,
+        totalMessages: stats.totalMessages,
+        userId,
+        date
+      }, 'Generating AI summary for guest')
+
+      const summary = await generateWithClaude(analysisPrompt)
+      const parsedData = parseSummaryJson(summary)
+      const serializedParsedData = serializeParsedData(parsedData)
+
+      // DB에 저장
+      const { error: saveError } = await supabase
+        .from('daily_ai_summaries')
+        .upsert({
+          user_id: userId,
+          date,
+          summary_text: summary,
+          project_texts: projectData,
+          force_regenerated: forceRegenerate,
+          parsed_data: JSON.parse(serializedParsedData),
+          daily_summary: parsedData.summary,
+          work_categories: parsedData.work_categories,
+          project_todos: parsedData.project_todos,
+          quality_score: parsedData.quality_score,
+          quality_score_explanation: parsedData.quality_score_explanation
+        } as any)
+
+      if (saveError) {
+        request.log.error(saveError, 'Failed to save AI summary')
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          summary,
+          cached: false,
+          project_count: projectData.length,
+          parsed_data: parsedData,
+          daily_summary: parsedData.summary,
+          work_categories: parsedData.work_categories,
+          project_todos: parsedData.project_todos,
+          quality_score: parsedData.quality_score,
+          quality_score_explanation: parsedData.quality_score_explanation,
+          parse_errors: parsedData.errors,
+        },
+      })
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid input',
+          details: error.issues,
+        })
+      }
+
+      request.log.error(error, 'Generate summary error for guest')
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to generate summary',
       })
     }
   })
